@@ -227,94 +227,10 @@ function dismiss(): void {
   showLauncher()
 }
 
-/**
- * fomo's own top bar — logo, search, wallet/profile — must stay visible and usable above the
- * terminal, so the overlay sits below it rather than over it: top offset to the bar's bottom
- * edge, z-index one below the bar's own stacking context so the bar's dropdowns (profile menu,
- * search results) keep painting on top of us. fomo's bundle is hashed per deploy, so the bar is
- * found by shape, not by class name; when nothing bar-shaped exists (marketing page, mid-boot)
- * the overlay covers everything, exactly as before.
- */
-const FULL_COVER_Z = 2147483000
-const BAR_MIN_H = 30
-const BAR_MAX_H = 160
-
-function findFomoBar(): HTMLElement | null {
-  const isBar = (el: HTMLElement): boolean => {
-    if (el === host || el === launcher || el.contains(host as Node)) return false
-    const rect = el.getBoundingClientRect()
-    if (rect.top > 1 || rect.height < BAR_MIN_H || rect.height > BAR_MAX_H) return false
-    if (rect.width < window.innerWidth * 0.8) return false
-    const cs = window.getComputedStyle(el)
-    return cs.display !== 'none' && cs.visibility !== 'hidden'
-  }
-
-  for (const el of document.querySelectorAll<HTMLElement>('header, [role="banner"], nav')) {
-    if (isBar(el)) return el
-  }
-
-  // The bar may be a plain div: look shallowly for a pinned, full-width strip.
-  for (const child of document.body.children) {
-    if (!(child instanceof HTMLElement)) continue
-    for (const el of [child, ...child.children]) {
-      if (!(el instanceof HTMLElement)) continue
-      const position = window.getComputedStyle(el).position
-      if ((position === 'fixed' || position === 'sticky') && isBar(el)) return el
-    }
-  }
-  return null
-}
-
-/** The z-index of the element's nearest self-or-ancestor stacking context, if numeric. */
-function stackLevel(el: HTMLElement): number | null {
-  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
-    const cs = window.getComputedStyle(node)
-    if (cs.position !== 'static' && cs.zIndex !== 'auto') {
-      const z = Number.parseInt(cs.zIndex, 10)
-      if (Number.isFinite(z)) return z
-    }
-  }
-  return null
-}
-
-let lastBarState: string | null = null
-
-function layoutHost(): void {
-  if (!host) return
-  const bar = findFomoBar()
-
-  let top = 0
-  let z = FULL_COVER_Z
-  if (bar) {
-    top = Math.max(0, Math.round(bar.getBoundingClientRect().bottom))
-    const barZ = stackLevel(bar)
-    // A bar low in the stack means our z-1 could sink below page content; cover-all is safer.
-    if (barZ !== null && barZ > 10) z = barZ - 1
-  }
-  host.style.top = `${top}px`
-  host.style.zIndex = String(z)
-
-  const state = bar ? `topbar ${top}px, overlay z ${z}` : 'no topbar found — full cover'
-  if (state !== lastBarState) {
-    lastBarState = state
-    console.info(`[fobo] ${state}`)
-  }
-}
-
-window.addEventListener('resize', () => {
-  if (host && host.dataset.foboHidden === undefined) layoutHost()
-})
-
-// The bar can render after we mount (fomo still booting) and can change height responsively.
-window.setInterval(() => {
-  if (host && host.dataset.foboHidden === undefined) layoutHost()
-}, 1_000)
-
 function render(): void {
   if (host) {
     delete host.dataset.foboHidden
     lockPageScroll()
-    layoutHost()
     return
   }
   if (document.getElementById(HOST_ID)) return
@@ -336,7 +252,6 @@ function render(): void {
   shadow.append(container)
   document.body.append(host)
   lockPageScroll()
-  layoutHost()
 
   root = createRoot(container)
   root.render(

@@ -18,15 +18,13 @@
  * own API, held in a local variable, and never persisted or logged.
  */
 
-import { TOPIC_TO_LIST, type ListDiff, type ListKey } from '~/lib/protocol'
+import { readJwt } from '~/lib/fomoApi'
+import { SUPPORTED_CHAINS, TOPIC_TO_LIST, type ListDiff, type ListKey } from '~/lib/protocol'
 
 const WS_URL = 'wss://prod-api.fomo.family/ws'
 
-/**
- * The chain set fomo subscribes with. Observed live as the topicId on real frames; fomo
- * builds it from its own supported-chain list (Ethereum appears only behind a feature gate).
- */
-const TOPIC_ID = '1,56,143,4663,8453,1399811149'
+/** The chain set fomo subscribes with — the topicId on every real frame. */
+const TOPIC_ID = SUPPORTED_CHAINS
 
 const TOPICS = Object.keys(TOPIC_TO_LIST)
 
@@ -35,18 +33,6 @@ export type SocketStatus = 'connecting' | 'authenticated' | 'closed' | 'unauthen
 export interface FomoSocketHandlers {
   onDiff: (list: ListKey, diff: ListDiff) => void
   onStatus: (status: SocketStatus) => void
-}
-
-/** Read the page's Privy access token. Stored JSON-stringified by fomo's own storage layer. */
-function readJwt(): string | null {
-  try {
-    const raw = window.localStorage.getItem('privy:token')
-    if (!raw) return null
-    const parsed: unknown = raw.startsWith('"') ? JSON.parse(raw) : raw
-    return typeof parsed === 'string' && parsed.length > 0 ? parsed : null
-  } catch {
-    return null
-  }
 }
 
 export function createFomoSocket({ onDiff, onStatus }: FomoSocketHandlers): () => void {

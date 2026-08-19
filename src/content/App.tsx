@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Column } from '~/ui/Column'
+import { TopBar } from '~/ui/TopBar'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { metricsFor, warm } from '~/lib/mobula'
@@ -12,13 +13,6 @@ const EMPTY: Lists = { 'pre-graduated': [], graduated: [], trending: [] }
 
 /** How long a newly inserted row stays highlighted. */
 const FRESH_MS = 900
-
-const STATUS_TEXT: Record<SocketStatus, string> = {
-  connecting: 'connecting',
-  authenticated: 'live',
-  closed: 'reconnecting',
-  unauthenticated: 'signed out',
-}
 
 export function App({
   onDismiss,
@@ -142,20 +136,7 @@ export function App({
 
   return (
     <div className="shell">
-      <header className="topbar">
-        <h1 className="brand">
-          fobo<span>.</span>
-        </h1>
-        <span className="tagline">fear of better options</span>
-        <span className="topbar-spacer" />
-        <span className="status">
-          <span className="dot" data-live={status === 'authenticated' ? 'true' : 'false'} />
-          {STATUS_TEXT[status]}
-        </span>
-        <button className="ghost-button" onClick={onDismiss}>
-          Close (Esc)
-        </button>
-      </header>
+      <TopBar status={status} onDismiss={onDismiss} onNavigate={onOpen} />
 
       <div className="columns">
         {LIST_KEYS.map((key) => (

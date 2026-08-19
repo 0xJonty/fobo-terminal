@@ -2,6 +2,13 @@
  * fomo's token-list vocabulary, lifted from its own bundle so ours cannot drift from theirs.
  */
 
+/**
+ * The chain set fomo runs with, as one comma-joined string. Observed live as the socket
+ * topicId, and sent by fomo's own fetch wrapper as the X-Supported-Chains header on every
+ * REST call (Ethereum appears only behind a feature gate).
+ */
+export const SUPPORTED_CHAINS = '1,56,143,4663,8453,1399811149'
+
 /** fomo's list keys, exactly as they appear in its side panel config. */
 export const LIST_KEYS = ['pre-graduated', 'graduated', 'trending'] as const
 export type ListKey = (typeof LIST_KEYS)[number]
