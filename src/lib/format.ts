@@ -26,6 +26,12 @@ export function percent(value: number | undefined, digits = 1): string {
   return `${sign}${value.toFixed(digits)}%`
 }
 
+/** A wallet cohort's share of supply: 71%. Unsigned — a share is not a delta. */
+export function share(value: number | undefined, digits = 0): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return `${value.toFixed(digits)}%`
+}
+
 /** Compact age from a unix-seconds timestamp: 12s / 4m / 3h / 2d */
 export function age(createdAtSeconds: number | undefined, now = Date.now()): string {
   if (createdAtSeconds === undefined || !Number.isFinite(createdAtSeconds)) return '—'

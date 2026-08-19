@@ -39,17 +39,13 @@ function num(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
-/** Mobula reports holdings as fractions (0.04 === 4%); the UI wants percentages. */
-function pct(value: unknown): number | undefined {
-  const n = num(value)
-  return n === undefined ? undefined : n * 100
-}
-
 function toMetrics(row: Record<string, unknown>): TokenMetrics {
   return {
     holdersCount: num(row.holdersCount),
-    top10Holdings: pct(row.top10Holdings),
-    devHoldings: pct(row.devHoldings),
+    // Holdings arrive already as percentages. An earlier fraction assumption multiplied them by
+    // 100 and produced cards claiming +7114% top-10 concentration.
+    top10Holdings: num(row.top10Holdings),
+    devHoldings: num(row.devHoldings),
     proTradersCount: num(row.proTradersCount),
     smartTradersCount: num(row.smartTradersCount),
     securityScore: num(row.securityScore),

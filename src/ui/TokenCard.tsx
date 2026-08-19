@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react'
 import { ChefHat, Droplet, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
 import { Metric, riskClass } from '~/ui/Metric'
-import { age, count, percent, usd } from '~/lib/format'
+import { age, count, percent, share, usd } from '~/lib/format'
 import type { Token } from '~/types/token'
 
 /**
@@ -116,7 +116,7 @@ export const TokenCard = memo(function TokenCard({
           {m?.top10Holdings !== undefined && (
             <Metric
               icon={UserStar}
-              value={percent(m.top10Holdings, 0)}
+              value={share(m.top10Holdings)}
               title="Top 10 holders' share of supply"
               tone={riskClass(m.top10Holdings)}
             />
@@ -124,7 +124,7 @@ export const TokenCard = memo(function TokenCard({
           {m?.devHoldings !== undefined && (
             <Metric
               icon={ChefHat}
-              value={percent(m.devHoldings, 0)}
+              value={share(m.devHoldings)}
               title="Dev wallet holdings"
               tone={m.devHoldings >= 5 ? riskClass(m.devHoldings) : 'dev'}
             />

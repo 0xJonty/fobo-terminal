@@ -49,6 +49,15 @@ export function Column({
 
   const rows = frozen ?? tokens
 
+  // The terminal hides rather than unmounts across a handoff (see content/index.tsx). The cursor
+  // was over this column at the moment it clicked away and mouseleave never fires on a hidden
+  // element, so without this the column came back frozen on stale rows, badged "paused".
+  useEffect(() => {
+    const release = () => setHovered(false)
+    window.addEventListener('fobo:hidden', release)
+    return () => window.removeEventListener('fobo:hidden', release)
+  }, [])
+
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,

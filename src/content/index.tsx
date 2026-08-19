@@ -208,14 +208,33 @@ function unmount(): void {
   unlockPageScroll()
 }
 
+/**
+ * A handoff or dismissal hides the terminal rather than unmounting it. Tearing down threw away
+ * the socket and all three lists, so every Back paid a cold reconnect and re-stream behind a
+ * skeleton screen. Hiding keeps React and the socket warm; returning is one attribute flip.
+ * The window event lets the columns drop their hover-freeze — the cursor was over a row when the
+ * click hid us, and mouseleave never fires on a hidden element.
+ */
+function hide(): void {
+  if (!host) return
+  host.dataset.foboHidden = ''
+  unlockPageScroll()
+  window.dispatchEvent(new Event('fobo:hidden'))
+}
+
 function dismiss(): void {
   setDismissed(true)
-  unmount()
+  hide()
   showLauncher()
 }
 
 function render(): void {
-  if (host || document.getElementById(HOST_ID)) return
+  if (host) {
+    delete host.dataset.foboHidden
+    lockPageScroll()
+    return
+  }
+  if (document.getElementById(HOST_ID)) return
 
   host = document.createElement('div')
   host.id = HOST_ID
@@ -302,9 +321,15 @@ async function sync(): Promise<void> {
     return
   }
 
+  if (decision === 'dismissed' || decision === 'handoff') {
+    hide()
+    showLauncher()
+    return
+  }
+
+  // disabled / marketing: a full teardown is correct here.
   unmount()
-  if (decision === 'dismissed' || decision === 'handoff') showLauncher()
-  else removeLauncher()
+  removeLauncher()
 }
 
 /**
@@ -349,7 +374,8 @@ function waitForSession(): void {
 }
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && host) dismiss()
+  // The warm host also exists while hidden on a coin page — only a visible terminal dismisses.
+  if (event.key === 'Escape' && host && host.dataset.foboHidden === undefined) dismiss()
 })
 
 try {

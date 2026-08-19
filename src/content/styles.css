@@ -32,7 +32,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-:host([hidden]) { display: none; }
+/*
+ * Hidden-but-warm: across a handoff the app stays mounted so the socket and lists survive and
+ * Back is instant. visibility rather than display, so the virtualiser's measurements never
+ * collapse to zero while the terminal is off screen.
+ */
+:host([data-fobo-hidden]) {
+  visibility: hidden;
+  pointer-events: none;
+}
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
