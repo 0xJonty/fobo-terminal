@@ -1,12 +1,12 @@
 import { memo, useEffect, useState } from 'react'
-import { Boxes, ChefHat, Crosshair, Droplet, Ghost, UserStar, Users } from 'lucide-react'
+import { ChefHat, Droplet, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
 import { Metric, riskClass } from '~/ui/Metric'
 import { age, count, percent, usd } from '~/lib/format'
 import type { Token } from '~/types/token'
 
 /**
- * One row. Four dense lines beside an avatar, following Axiom Pulse's anatomy but rendered
+ * One row. Dense lines beside an avatar, following Axiom Pulse's anatomy but rendered
  * entirely in fomo's design tokens.
  *
  * Read-only by design: the whole row is a link into fomo's own coin page. There is no buy
@@ -156,43 +156,16 @@ export const TokenCard = memo(function TokenCard({
           </span>
         </span>
 
-        {/* 4 — bonding progress, or the remaining concentration metrics */}
-        <span className="line">
-          {showBond && token.graduationPercent !== undefined ? (
+        {/*
+          * 4 — bonding progress, pre-graduated only. Sniper/insider/bundler cohorts used to sit
+          * here, joined in from Mobula's pulse feed; fomo itself exposes none of them and the
+          * joined numbers did not hold up, so they are gone. A blank beats a guess.
+          */}
+        {showBond && token.graduationPercent !== undefined && (
+          <span className="line">
             <BondBar percent={token.graduationPercent} />
-          ) : (
-            <>
-              {m?.snipersCount !== undefined && (
-                <Metric
-                  icon={Crosshair}
-                  value={count(m.snipersCount)}
-                  title={
-                    m.snipersHoldings === undefined
-                      ? 'Sniper wallets'
-                      : `Sniper wallets — holding ${percent(m.snipersHoldings, 0)} of supply`
-                  }
-                  tone={riskClass(m.snipersHoldings)}
-                />
-              )}
-              {m?.insidersHoldings !== undefined && (
-                <Metric
-                  icon={Ghost}
-                  value={percent(m.insidersHoldings, 0)}
-                  title="Insider holdings"
-                  tone={riskClass(m.insidersHoldings)}
-                />
-              )}
-              {m?.bundlersHoldings !== undefined && (
-                <Metric
-                  icon={Boxes}
-                  value={percent(m.bundlersHoldings, 0)}
-                  title="Bundled supply"
-                  tone={riskClass(m.bundlersHoldings)}
-                />
-              )}
-            </>
-          )}
-        </span>
+          </span>
+        )}
       </span>
     </a>
   )

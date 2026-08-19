@@ -174,12 +174,38 @@ function showLauncher(): void {
   launcher = button
 }
 
+/**
+ * The one deliberate exception to "never touch fomo's tree": while the terminal is up, the page
+ * behind it must not own a scrollbar or receive chained wheel events — the three columns are the
+ * only scrollers. The inline overflow styles are saved and restored verbatim, so unmounting
+ * leaves the page exactly as found.
+ */
+let savedOverflow: { html: string; body: string } | null = null
+
+function lockPageScroll(): void {
+  if (savedOverflow) return
+  savedOverflow = {
+    html: document.documentElement.style.overflow,
+    body: document.body.style.overflow,
+  }
+  document.documentElement.style.overflow = 'hidden'
+  document.body.style.overflow = 'hidden'
+}
+
+function unlockPageScroll(): void {
+  if (!savedOverflow) return
+  document.documentElement.style.overflow = savedOverflow.html
+  document.body.style.overflow = savedOverflow.body
+  savedOverflow = null
+}
+
 function unmount(): void {
   root?.unmount()
   root = null
   host?.remove()
   host = null
   document.getElementById(HOST_ID)?.remove()
+  unlockPageScroll()
 }
 
 function dismiss(): void {
@@ -200,8 +226,14 @@ function render(): void {
   shadow.append(sheet)
 
   const container = document.createElement('div')
+  // The percentage-height chain must be unbroken. .shell is height:100%, which resolves to
+  // nothing against this div's default auto height — the shell then grows with its content, the
+  // columns never overflow, and they never scroll. The host is fixed inset:0, so 100% here pins
+  // the whole tree to the viewport and the overflow lands where it belongs: .column-body.
+  container.style.height = '100%'
   shadow.append(container)
   document.body.append(host)
+  lockPageScroll()
 
   root = createRoot(container)
   root.render(
@@ -212,17 +244,34 @@ function render(): void {
 }
 
 /**
- * Opening a coin is a handoff, not a dismissal: we record the destination so fobo stays out of the
- * way there, and leave the overlay mounted so the page unload takes it down. Nothing global is
- * set, so every other history entry — the one Back returns to included — still mounts.
+ * Opening a coin is a handoff, not a dismissal: we record the destination so fobo stays out of
+ * the way there, while every other history entry — the one Back returns to included — still
+ * mounts.
+ *
+ * The navigation itself is client-side. history is shared state across worlds, so pushState from
+ * here moves the real URL, and the synthetic PopStateEvent crosses the isolated/main boundary,
+ * which is what makes fomo's router re-read location and swap the view — no full page load.
+ * Back is a real popstate and remounts the terminal just as instantly. The previous
+ * location.assign round-tripped the entire fomo bundle in both directions, and is kept only as
+ * the fallback.
  */
 function navigate(href: string): void {
+  let path: string
   try {
-    rememberHandoff(new URL(href, window.location.origin).pathname)
+    path = new URL(href, window.location.origin).pathname
   } catch {
-    /* keep navigating even if we could not record it */
+    return
   }
-  window.location.assign(href)
+  rememberHandoff(path)
+  try {
+    window.history.pushState(null, '', href)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  } catch {
+    window.location.assign(href)
+    return
+  }
+  lastPath = window.location.pathname
+  void sync()
 }
 
 /** Why fobo is or is not on screen. Surfaced so a mount failure is diagnosable from the console. */
@@ -317,6 +366,35 @@ try {
   // Orphaned content script from a previous extension version — the fresh one owns messaging.
 }
 
+/** Paths that render fomo's coin view. Cards link here; the `/` redirect also lands here. */
+const COIN_PATH = /^\/tokens\//
+
+/**
+ * A tab whose very first URL is already a coin page was opened at that coin on purpose —
+ * right-click → open in new tab on a card, a ctrl-click, a pasted link. A fresh tab holds no
+ * handoff records (sessionStorage starts empty), so without this the terminal mounted over the
+ * exact page the user asked for. Record the entry as a handoff before the first sync.
+ *
+ * Arriving via the `/` redirect keeps mounting, and stays distinguishable: a server-side
+ * redirect leaves redirectCount > 0, and a client-side one leaves the navigation entry's URL at
+ * `/` while location has already moved on. Reloads and back/forward are not fresh entries and
+ * are governed by the records the tab already holds.
+ */
+function recordDeliberateEntry(): void {
+  const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
+  if (!entry || entry.type !== 'navigate' || entry.redirectCount > 0) return
+
+  let entryPath: string
+  try {
+    entryPath = new URL(entry.name).pathname
+  } catch {
+    return
+  }
+  if (entryPath !== window.location.pathname || !COIN_PATH.test(entryPath)) return
+  rememberHandoff(entryPath)
+}
+
+recordDeliberateEntry()
 watchRoute()
 void sync()
 if (isMarketingPage()) waitForSession()

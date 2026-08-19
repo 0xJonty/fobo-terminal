@@ -165,6 +165,8 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Reaching a column's end must not hand the wheel to the page behind the overlay. */
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--fobo-border) transparent;
 }

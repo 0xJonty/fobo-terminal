@@ -130,12 +130,9 @@ export function App({
 
   const open = useCallback(
     (token: Token) => {
-      // A full navigation rather than a synthetic history event: fomo's router lives in the
-      // page's own JS world, so driving it from here is not reliable. Opening a coin is a
-      // deliberate context switch, so the reload cost is acceptable.
-      //
-      // Note we do NOT dismiss on the way out. Dismissing wrote a session flag that outlived the
-      // navigation, so pressing Back landed on the home route with the terminal suppressed.
+      // Navigation mechanics (client-side pushState with a full-load fallback) and the handoff
+      // bookkeeping both live in content/index.tsx — this only builds the href. Nothing is
+      // dismissed on the way out, so Back remounts the terminal.
       onOpen(`/tokens/${token.chain}/${token.address}`)
     },
     [onOpen],

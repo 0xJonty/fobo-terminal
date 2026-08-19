@@ -51,11 +51,6 @@ export interface TokenMetrics {
   holdersCount?: number
   top10Holdings?: number
   devHoldings?: number
-  snipersCount?: number
-  snipersHoldings?: number
-  insidersCount?: number
-  insidersHoldings?: number
-  bundlersHoldings?: number
   proTradersCount?: number
   smartTradersCount?: number
   securityScore?: number
