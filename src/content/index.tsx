@@ -227,6 +227,22 @@ function dismiss(): void {
   showLauncher()
 }
 
+/**
+ * "Deposit more" cannot be recreated honestly — it opens fomo's own deposit modal, which lives
+ * in fomo's React tree. So the terminal's button drives the real one: find fomo's button in the
+ * page below, step out of the way, and click it. If fomo's header is not there (or renamed),
+ * nothing happens rather than something invented.
+ */
+function requestDeposit(): void {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('button')) {
+    if (button.textContent?.trim() !== 'Deposit more') continue
+    if (button.closest(`#${HOST_ID}`)) continue
+    dismiss()
+    button.click()
+    return
+  }
+}
+
 function render(): void {
   if (host) {
     delete host.dataset.foboHidden
@@ -256,7 +272,7 @@ function render(): void {
   root = createRoot(container)
   root.render(
     <StrictMode>
-      <App onOpen={navigate} />
+      <App onOpen={navigate} onDeposit={requestDeposit} />
     </StrictMode>,
   )
 }

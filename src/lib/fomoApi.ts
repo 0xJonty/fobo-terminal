@@ -100,62 +100,174 @@ export async function currentUser(): Promise<FomoUser | null> {
   }
 }
 
-/* ---------- wallet balances ---------- */
+/* ---------- header numbers: cash, portfolio, 24h change ---------- */
 
 /**
- * The USDC address fomo treats as cash on each chain, lifted verbatim from its chains chunk.
- * fomo's own portfolio reducer counts the Solana one 1:1 and excludes the EVM ones from the
- * price-multiplied holdings sum; we surface all of them as cash, so total = cash + holdings.
+ * fomo's cash rail: USDC on Solana. The header's "cash" figure is exactly this row's
+ * shiftedBalance — nothing summed across chains (verified against the live header component).
  */
-const CASH_ADDRESSES = new Set(
+const USDC_SOL = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+const USDC_SOL_TOKEN_ID = `${USDC_SOL}:1399811149`
+
+/**
+ * The per-chain USDC addresses fomo's portfolio reducer skips, lifted verbatim from its chains
+ * chunk. Everything else counts at shiftedBalance x priceUSD; the Solana USDC row at face value.
+ */
+const EVM_USDC = new Set(
   [
-    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // Solana
     '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // Ethereum
     '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // Base
     '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', // BNB
-    '0x754704bc059f8c67012fed69bc8a327a5aafb603', // per fomo's chains chunk
-    '0x5fc5360d0400a0fd4f2af552add042d716f1d168', // per fomo's chains chunk
+    '0x754704bc059f8c67012fed69bc8a327a5aafb603',
+    '0x5fc5360d0400a0fd4f2af552add042d716f1d168',
   ].map(foldAddress),
 )
 
 interface BalanceRow {
-  userToken?: { tokenAddress?: unknown }
-  balance?: { tokenAddress?: unknown; shiftedBalance?: unknown }
+  balance?: { tokenAddress?: unknown; tokenId?: unknown; shiftedBalance?: unknown }
   tokenFilterResult?: { priceUSD?: unknown }
+  activeTrade?: {
+    realizedPnlUsd?: unknown
+    humanTokenAmount?: unknown
+    sumTransferIn?: unknown
+    sumSwapOpen?: unknown
+    avgEntryPrice?: unknown
+    avgTransferInPrice?: unknown
+  }
+  userToken?: {
+    currentRealizedPnlUsd?: unknown
+    humanAmountRemaining?: unknown
+    averageEntryPriceUsd?: unknown
+  }
 }
 
-export interface WalletTotals {
+interface BalancesPayload {
+  balances?: unknown[]
+  otherPnl?: unknown
+  livePerpPnl?: unknown
+}
+
+/** fomo's blended entry price for an open trade (its `Dr`): swaps and transfers, weighted. */
+function tradeEntryPrice(trade: NonNullable<BalanceRow['activeTrade']>): number {
+  const transferIn = num(trade.sumTransferIn) ?? 0
+  const swapOpen = num(trade.sumSwapOpen) ?? 0
+  const amount = transferIn + swapOpen
+  if (amount === 0) return 0
+  const cost =
+    (num(trade.avgEntryPrice) ?? 0) * swapOpen + (num(trade.avgTransferInPrice) ?? 0) * transferIn
+  return cost / amount
+}
+
+export interface HeaderNumbers {
   cashUsd: number
-  holdingsUsd: number
-  totalUsd: number
+  portfolioUsd: number
+  /** Absent until the 24h-ago snapshot has loaded. */
+  change24hUsd?: number
+}
+
+/** The 24h-ago pnl reference barely moves; cache it for an hour, exactly as fomo does. */
+let snapshotCache: { at: number; userId: string; pnl: number } | null = null
+
+async function snapshotPnl24hAgo(userId: string): Promise<number | null> {
+  const now = Date.now()
+  if (snapshotCache && snapshotCache.userId === userId && now - snapshotCache.at < 3_600_000) {
+    return snapshotCache.pnl
+  }
+  // fomo's reference point: the hourly snapshot at floor(now - 24h) — its own id arithmetic.
+  const snapshotId = Math.floor((now / 1000 - 86_400) / 3_600) * 3_600
+  const raw = await call<{ pnl?: unknown }>(
+    `/v2/userTokens/aggregatedSnapshotById?userId=${encodeURIComponent(userId)}&snapshotId=${snapshotId}`,
+  )
+  const pnl = num(raw?.pnl)
+  if (pnl === undefined) return null
+  snapshotCache = { at: now, userId, pnl }
+  return pnl
 }
 
 /**
- * GET /v2/users/:id/balances, totalled the way fomo's own frontend does it:
- * cash rows at face value, every other row shiftedBalance x priceUSD (missing price counts 0,
- * exactly as fomo's `?? 0` does).
+ * GET /v2/users/:id/balances, reduced to the three figures fomo's header shows, using fomo's
+ * own arithmetic end to end:
+ *  - cash: the Solana USDC row's shiftedBalance;
+ *  - portfolio: skip EVM USDC rows, Solana USDC at face value, the rest at price;
+ *  - 24h change: live pnl (per-position realized + unrealized, plus otherPnl and livePerpPnl)
+ *    minus the pnl recorded in the snapshot from 24 hours ago.
  */
-export async function walletTotals(userId: string): Promise<WalletTotals | null> {
-  const raw = await call<{ balances?: unknown[] } | unknown[]>(
-    `/v2/users/${encodeURIComponent(userId)}/balances`,
-  )
-  if (!raw) return null
-  const rows = Array.isArray(raw) ? raw : Array.isArray(raw.balances) ? raw.balances : null
-  if (!rows) return null
+export async function headerNumbers(userId: string): Promise<HeaderNumbers | null> {
+  const raw = await call<BalancesPayload>(`/v2/users/${encodeURIComponent(userId)}/balances`)
+  if (!raw || !Array.isArray(raw.balances)) return null
 
   let cash = 0
-  let holdings = 0
-  for (const item of rows) {
+  let portfolio = 0
+  let livePnl = 0
+
+  for (const item of raw.balances) {
     if (typeof item !== 'object' || item === null) continue
     const row = item as BalanceRow
-    const address = row.balance?.tokenAddress ?? row.userToken?.tokenAddress
+    const address = row.balance?.tokenAddress
     const shifted = num(row.balance?.shiftedBalance)
     if (typeof address !== 'string' || shifted === undefined) continue
+    const price = num(row.tokenFilterResult?.priceUSD)
 
-    if (CASH_ADDRESSES.has(foldAddress(address))) cash += shifted
-    else holdings += shifted * (num(row.tokenFilterResult?.priceUSD) ?? 0)
+    if (row.balance?.tokenId === USDC_SOL_TOKEN_ID) cash += shifted
+
+    if (!EVM_USDC.has(foldAddress(address))) {
+      portfolio += address === USDC_SOL ? shifted : shifted * (price ?? 0)
+    }
+
+    // Per-position pnl (fomo's Sl): cash rows and unpriced rows do not participate.
+    if (address === USDC_SOL || price === undefined) continue
+    if (row.activeTrade) {
+      livePnl +=
+        (num(row.activeTrade.realizedPnlUsd) ?? 0) +
+        (num(row.activeTrade.humanTokenAmount) ?? 0) * (price - tradeEntryPrice(row.activeTrade))
+    } else if (row.userToken) {
+      livePnl +=
+        (num(row.userToken.currentRealizedPnlUsd) ?? 0) +
+        (num(row.userToken.humanAmountRemaining) ?? 0) *
+          (price - (num(row.userToken.averageEntryPriceUsd) ?? 0))
+    }
   }
-  return { cashUsd: cash, holdingsUsd: holdings, totalUsd: cash + holdings }
+
+  livePnl += (num(raw.otherPnl) ?? 0) + (num(raw.livePerpPnl) ?? 0)
+
+  const reference = await snapshotPnl24hAgo(userId)
+  return {
+    cashUsd: cash,
+    portfolioUsd: portfolio,
+    change24hUsd: reference === null ? undefined : livePnl - reference,
+  }
+}
+
+/* ---------- trader search ---------- */
+
+export interface FomoTrader {
+  userHandle: string
+  displayName?: string
+  profilePictureLink?: string
+}
+
+/** GET /v2/users/fuzzy-search — fomo's trader search, shapes verified against the live API. */
+export async function searchUsers(query: string): Promise<FomoTrader[]> {
+  const q = query.trim()
+  if (!q) return []
+  const raw = await call<{ users?: unknown[] }>(
+    `/v2/users/fuzzy-search?searchTerm=${encodeURIComponent(q)}`,
+  )
+  if (!raw || !Array.isArray(raw.users)) return []
+
+  const traders: FomoTrader[] = []
+  for (const item of raw.users) {
+    if (typeof item !== 'object' || item === null) continue
+    const row = item as { userHandle?: unknown; displayName?: unknown; profilePictureLink?: unknown }
+    if (typeof row.userHandle !== 'string' || row.userHandle === '') continue
+    traders.push({
+      userHandle: row.userHandle,
+      displayName: typeof row.displayName === 'string' ? row.displayName : undefined,
+      profilePictureLink:
+        typeof row.profilePictureLink === 'string' ? row.profilePictureLink : undefined,
+    })
+  }
+  return traders
 }
 
 /* ---------- token search ---------- */

@@ -14,7 +14,13 @@ const EMPTY: Lists = { 'pre-graduated': [], graduated: [], trending: [] }
 /** How long a newly inserted row stays highlighted. */
 const FRESH_MS = 900
 
-export function App({ onOpen }: { onOpen: (href: string) => void }) {
+export function App({
+  onOpen,
+  onDeposit,
+}: {
+  onOpen: (href: string) => void
+  onDeposit: () => void
+}) {
   const [lists, setLists] = useState<Lists>(EMPTY)
   const [status, setStatus] = useState<SocketStatus>('connecting')
   const [freshKeys, setFreshKeys] = useState<ReadonlySet<string>>(new Set())
@@ -130,7 +136,7 @@ export function App({ onOpen }: { onOpen: (href: string) => void }) {
 
   return (
     <div className="shell">
-      <TopBar status={status} onNavigate={onOpen} />
+      <TopBar onNavigate={onOpen} onDeposit={onDeposit} />
 
       <div className="columns">
         {LIST_KEYS.map((key) => (

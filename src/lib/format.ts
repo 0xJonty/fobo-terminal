@@ -26,6 +26,22 @@ export function percent(value: number | undefined, digits = 1): string {
   return `${sign}${value.toFixed(digits)}%`
 }
 
+/** Exact dollars, two decimals, as fomo's header renders balances: $1,234.56 */
+export function usdExact(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Signed exact dollars for a PnL delta, fomo-style: -$107.76 / +$4.20 */
+export function usdDelta(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  const sign = value < 0 ? '-' : '+'
+  return `${sign}$${Math.abs(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
 /** A wallet cohort's share of supply: 71%. Unsigned — a share is not a delta. */
 export function share(value: number | undefined, digits = 0): string {
   if (value === undefined || !Number.isFinite(value)) return '—'
