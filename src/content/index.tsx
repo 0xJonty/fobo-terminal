@@ -15,23 +15,57 @@ const HOST_ID = 'fobo-terminal-root'
 const LAUNCHER_ID = 'fobo-terminal-launcher'
 const ENABLED_KEY = 'fobo:enabled'
 
-/**
- * Dismissal means "the user pressed Esc / Close", nothing else. It is deliberately NOT set when
- * we navigate to a coin: doing that broke the back button, because the flag outlived the
- * navigation and the home screen came back as a bare launcher instead of the terminal.
- *
- * Scoped to the tab via sessionStorage, so a new tab starts on the terminal again.
- */
+/** Set when the user presses Esc or Close. Tab-scoped. */
 const DISMISSED_KEY = 'fobo:dismissed'
 
 /**
- * fobo replaces the *home screen*, so it mounts on the home route only. Coin pages, settings and
- * everything else are fomo's own. This is what makes back-navigation work: there is no overlay to
- * dismiss on the way out, so returning home simply mounts again.
+ * Paths fobo deliberately navigated to, so it can stay out of the way on the coin page the user
+ * asked for.
+ *
+ * This replaces an earlier "mount on `/` only" rule, which never fired: fomo redirects `/`
+ * straight to a coin page, so the home route the rule waited for does not exist in practice.
+ *
+ * Recording the destination rather than a global "dismissed" flag is also what makes Back work.
+ * The flag used to outlive the navigation, so returning from a coin found fobo suppressed; a
+ * per-path record only suppresses the coin page itself, and every other entry in the history
+ * (including the one the user came from) mounts normally.
  */
-function isHomeRoute(): boolean {
-  const path = window.location.pathname
-  return path === '/' || path === ''
+const HANDOFF_KEY = 'fobo:handoff'
+
+/** Bounded so a long session cannot grow this without limit. */
+const HANDOFF_LIMIT = 20
+
+function readHandoffs(): string[] {
+  try {
+    const raw = window.sessionStorage.getItem(HANDOFF_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writeHandoffs(paths: readonly string[]): void {
+  try {
+    window.sessionStorage.setItem(HANDOFF_KEY, JSON.stringify(paths.slice(-HANDOFF_LIMIT)))
+  } catch {
+    /* private mode — fall back to in-memory behaviour */
+  }
+}
+
+function rememberHandoff(path: string): void {
+  const paths = readHandoffs().filter((p) => p !== path)
+  paths.push(path)
+  writeHandoffs(paths)
+}
+
+function forgetHandoff(path: string): void {
+  writeHandoffs(readHandoffs().filter((p) => p !== path))
+}
+
+function isHandoff(path: string): boolean {
+  return readHandoffs().includes(path)
 }
 
 function isDismissed(): boolean {
@@ -56,8 +90,7 @@ function setDismissed(value: boolean): void {
  *
  * Reloading the extension (which a rebuild does on every save) orphans the content script already
  * running in the page: every chrome.* call from then on throws "Extension context invalidated".
- * Unguarded, that killed mount() before it rendered anything and the overlay never appeared again
- * until the host page was reloaded — the "extension breaks and won't work at all" symptom.
+ * Unguarded, that killed mount() before it rendered anything.
  */
 function extensionAlive(): boolean {
   try {
@@ -79,9 +112,9 @@ async function readEnabled(): Promise<boolean> {
 }
 
 /**
- * fomo's own bootstrap treats this key as the signal that a session exists — it is what
- * decides whether `/` redirects into the app. We use the same signal so fobo never covers
- * the marketing page for a logged-out visitor.
+ * fomo's own bootstrap treats this key as the signal that a session exists. We only use it to keep
+ * fobo off the logged-out marketing page at `/` — anywhere deeper means the app itself is running,
+ * so a key rename upstream cannot lock the overlay out of the whole site.
  */
 function isLoggedIn(): boolean {
   try {
@@ -90,6 +123,11 @@ function isLoggedIn(): boolean {
   } catch {
     return false
   }
+}
+
+function isMarketingPage(): boolean {
+  const path = window.location.pathname
+  return (path === '/' || path === '') && !isLoggedIn()
 }
 
 let host: HTMLElement | null = null
@@ -126,7 +164,9 @@ function showLauncher(): void {
     ].join(';'),
   )
   button.addEventListener('click', () => {
+    // An explicit summon overrides both suppression reasons for this page.
     setDismissed(false)
+    forgetHandoff(window.location.pathname)
     removeLauncher()
     void sync()
   })
@@ -172,44 +212,57 @@ function render(): void {
 }
 
 /**
- * Opening a coin is a real navigation, not a dismissal. We leave the overlay mounted and let the
- * page unload take it down, so nothing persists that would suppress the terminal on the way back.
+ * Opening a coin is a handoff, not a dismissal: we record the destination so fobo stays out of the
+ * way there, and leave the overlay mounted so the page unload takes it down. Nothing global is
+ * set, so every other history entry — the one Back returns to included — still mounts.
  */
 function navigate(href: string): void {
+  try {
+    rememberHandoff(new URL(href, window.location.origin).pathname)
+  } catch {
+    /* keep navigating even if we could not record it */
+  }
   window.location.assign(href)
 }
 
-/** Bring the DOM in line with the current route, preference and dismissal state. */
+/** Why fobo is or is not on screen. Surfaced so a mount failure is diagnosable from the console. */
+type Decision = 'mount' | 'marketing' | 'disabled' | 'dismissed' | 'handoff'
+
+async function decide(): Promise<Decision> {
+  if (isMarketingPage()) return 'marketing'
+  if (!(await readEnabled())) return 'disabled'
+  if (isDismissed()) return 'dismissed'
+  if (isHandoff(window.location.pathname)) return 'handoff'
+  return 'mount'
+}
+
+let lastDecision: Decision | null = null
+
+/** Bring the DOM in line with the current path, preference and dismissal state. */
 async function sync(): Promise<void> {
-  if (!isHomeRoute() || !isLoggedIn()) {
-    unmount()
+  const decision = await decide()
+
+  if (decision !== lastDecision) {
+    lastDecision = decision
+    console.info(`[fobo] ${decision} — ${window.location.pathname}`)
+  }
+
+  if (decision === 'mount') {
     removeLauncher()
+    render()
     return
   }
 
-  if (!(await readEnabled())) {
-    unmount()
-    removeLauncher()
-    return
-  }
-
-  // The route can change while the storage read is in flight.
-  if (!isHomeRoute()) return
-
-  if (isDismissed()) {
-    unmount()
-    showLauncher()
-    return
-  }
-
-  removeLauncher()
-  render()
+  unmount()
+  if (decision === 'dismissed' || decision === 'handoff') showLauncher()
+  else removeLauncher()
 }
 
 /**
  * fomo routes client-side, and we are in an isolated world — patching history.pushState here does
  * not see the page's own calls. popstate covers back/forward, pageshow covers a bfcache restore
- * (where the script never re-runs at all), and the poll covers in-app pushState navigation.
+ * (where the script never re-runs at all), and the poll covers in-app pushState navigation and the
+ * redirect off `/` that happens before fomo has finished booting.
  */
 let lastPath = window.location.pathname
 function watchRoute(): void {
@@ -228,23 +281,22 @@ function watchRoute(): void {
 }
 
 /**
- * document_idle can still beat fomo writing its session keys, and the old single-shot mount left
- * the terminal absent for the rest of the page's life when it did. Retry briefly, then stop —
- * a genuinely logged-out visitor must not be polled forever.
+ * document_idle can still beat fomo writing its session keys, and a single-shot mount left the
+ * terminal absent for the rest of the page's life when it did. Retry briefly, then stop — a
+ * genuinely logged-out visitor must not be polled forever.
  */
-const LOGIN_RETRY_MS = 500
-const LOGIN_RETRY_LIMIT = 20
+const SESSION_RETRY_MS = 500
+const SESSION_RETRY_LIMIT = 20
 
 function waitForSession(): void {
   let tries = 0
   const timer = window.setInterval(() => {
     tries += 1
-    if (tries > LOGIN_RETRY_LIMIT || host || launcher || !isHomeRoute() || isLoggedIn()) {
+    if (tries > SESSION_RETRY_LIMIT || host || launcher || !isMarketingPage()) {
       window.clearInterval(timer)
-      if (isLoggedIn()) void sync()
-      return
+      void sync()
     }
-  }, LOGIN_RETRY_MS)
+  }, SESSION_RETRY_MS)
 }
 
 document.addEventListener('keydown', (event) => {
@@ -254,7 +306,11 @@ document.addEventListener('keydown', (event) => {
 try {
   chrome.runtime.onMessage.addListener((message: { type?: string; enabled?: boolean }) => {
     if (message?.type !== 'fobo:enabled-changed') return
-    if (message.enabled) setDismissed(false)
+    if (message.enabled) {
+      // A toolbar toggle back on is an explicit summon, same as the launcher.
+      setDismissed(false)
+      forgetHandoff(window.location.pathname)
+    }
     void sync()
   })
 } catch {
@@ -263,4 +319,4 @@ try {
 
 watchRoute()
 void sync()
-if (!isLoggedIn()) waitForSession()
+if (isMarketingPage()) waitForSession()
