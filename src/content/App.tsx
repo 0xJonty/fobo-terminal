@@ -69,6 +69,10 @@ export function App({
   const [alertsLoadingMore, setAlertsLoadingMore] = useState(false)
   // fomo pages by the last RAW item's id, which our parse filtering must not lose.
   const alertsLastId = useRef<string | undefined>(undefined)
+  // After a failed page fetch, hold off before retrying. Without this the panel's
+  // load-more effect refires on the loadingMore state toggle and, with the user parked at
+  // the list bottom, spins a tight fetch loop against a failing endpoint.
+  const alertsRetryAt = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -89,11 +93,14 @@ export function App({
 
   const loadMoreAlerts = useCallback(() => {
     const lastId = alertsLastId.current
-    if (!lastId) return
+    if (!lastId || Date.now() < alertsRetryAt.current) return
     setAlertsLoadingMore(true)
     void fetchAlertsPage(lastId).then((page) => {
       setAlertsLoadingMore(false)
-      if (!page) return
+      if (!page) {
+        alertsRetryAt.current = Date.now() + 30_000
+        return
+      }
       alertsLastId.current = page.lastId ?? alertsLastId.current
       setAlerts((current) => mergeAlerts(current, page.items))
       setAlertsHasMore(page.hasNextPage)

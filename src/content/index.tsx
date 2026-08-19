@@ -360,13 +360,21 @@ function watchRoute(): void {
       markTerminal(path)
       pendingHomeMark = false
     }
+    // Returning to a marked `/` (Back past the landing page) renews the home intent. fomo
+    // immediately redirects off `/` again — and if the #1 trending token rotated since entry,
+    // it lands on a DIFFERENT token page than the one marked at boot. Without re-arming, that
+    // landing page is unmarked and the user is stranded on a bare fomo page where the terminal
+    // used to be. `/` is only ever marked by home intent, so this cannot widen the mount set.
+    if (path === '/' && isTerminalPath('/')) pendingHomeMark = true
     lastPath = path
     void sync()
   }
   window.addEventListener('popstate', check)
   window.addEventListener('hashchange', check)
   window.addEventListener('pageshow', () => {
+    // A bfcache restore re-runs nothing, so the same `/` re-entry case is handled here too.
     lastPath = window.location.pathname
+    if (lastPath === '/' && isTerminalPath('/')) pendingHomeMark = true
     void sync()
   })
   window.setInterval(check, 300)
