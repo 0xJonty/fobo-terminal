@@ -2,8 +2,9 @@
  * Service worker. Deliberately thin.
  *
  * It does NOT fetch data: fomo's API sits behind Cloudflare bot management that rejects
- * non-browser clients, so all data access happens in the page. This worker only owns the
- * on/off preference and the toolbar toggle.
+ * non-browser clients, so all data access happens in the page. This worker only relays the
+ * popup's on/off preference to open fomo tabs — the popup writes chrome.storage, this
+ * broadcasts the change, content scripts re-sync.
  *
  * MV3 terminates this worker when idle, so nothing is cached in module scope — every read
  * goes to chrome.storage.
@@ -11,27 +12,24 @@
 
 const ENABLED_KEY = 'fobo:enabled'
 
-async function isEnabled(): Promise<boolean> {
-  const stored = await chrome.storage.sync.get(ENABLED_KEY)
-  // Default on: the extension exists to be the home screen.
-  return stored[ENABLED_KEY] !== false
-}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !(ENABLED_KEY in changes)) return
+  const enabled = changes[ENABLED_KEY]?.newValue !== false
 
-async function setEnabled(value: boolean): Promise<void> {
-  await chrome.storage.sync.set({ [ENABLED_KEY]: value })
-}
-
-chrome.action.onClicked.addListener((tab) => {
   void (async () => {
-    const next = !(await isEnabled())
-    await setEnabled(next)
-
-    if (tab.id !== undefined) {
+    // Host permission for fomo.family is what lets this URL-filtered query run without the
+    // broad "tabs" permission.
+    const tabs = await chrome.tabs.query({ url: 'https://fomo.family/*' })
+    for (const tab of tabs) {
+      if (tab.id === undefined) continue
       try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'fobo:enabled-changed', enabled: next })
+        await chrome.tabs.sendMessage(tab.id, { type: 'fobo:enabled-changed', enabled })
       } catch {
-        // No content script on this tab (not fomo, or not yet injected) — nothing to tell.
+        // Tab without a content script (still loading, or discarded) — nothing to tell.
       }
     }
   })()
 })
+
+// Module scope, not script scope — keeps this file's names out of the global namespace.
+export {}

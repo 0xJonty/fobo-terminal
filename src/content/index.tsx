@@ -256,7 +256,7 @@ function render(): void {
   root = createRoot(container)
   root.render(
     <StrictMode>
-      <App onDismiss={dismiss} onOpen={navigate} />
+      <App onOpen={navigate} />
     </StrictMode>,
   )
 }

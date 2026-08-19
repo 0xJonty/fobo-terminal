@@ -169,17 +169,31 @@
 
 /* ---------- top bar: wallet / profile ---------- */
 
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wallet-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1875rem;
+}
+.wallet-value { font-size: 0.75rem; font-weight: 600; line-height: 1; }
+.wallet-label { font-size: 0.5625rem; color: var(--fobo-text-3); line-height: 1; }
+
 .profile {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   background: transparent;
   border: 0;
   color: inherit;
   font: inherit;
   cursor: pointer;
-  padding: 0.25rem 0.375rem;
-  border-radius: var(--radius-md, 0.375rem);
+  padding: 0.125rem;
+  border-radius: 999px;
 }
 .profile:hover { background: var(--fobo-surface-2); }
 
@@ -200,15 +214,6 @@
   font-weight: 600;
   color: var(--fobo-text-3);
 }
-
-.profile-lines {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.125rem;
-}
-.profile-name { font-size: 0.6875rem; font-weight: 600; line-height: 1; }
-.profile-balance { font-size: 0.625rem; color: var(--fobo-green); line-height: 1; }
 
 @media (max-width: 1200px) {
   .tagline { display: none; }

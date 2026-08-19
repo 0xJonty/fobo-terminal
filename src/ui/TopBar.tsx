@@ -39,11 +39,9 @@ function CircleImage({ src, label, className }: { src?: string; label: string; c
 
 export function TopBar({
   status,
-  onDismiss,
   onNavigate,
 }: {
   status: SocketStatus
-  onDismiss: () => void
   onNavigate: (href: string) => void
 }) {
   /* ---- search ---- */
@@ -159,34 +157,37 @@ export function TopBar({
         )}
       </div>
 
-      {user && (
-        <button
-          className="profile"
-          onClick={() => user.userHandle && onNavigate(`/profile/${user.userHandle}`)}
-          title={user.userHandle ? `@${user.userHandle}` : undefined}
-        >
-          <CircleImage src={user.profilePictureLink} label={profileName} className="profile-avatar" />
-          <span className="profile-lines">
-            <span className="profile-name">{profileName || '—'}</span>
-            {totals && (
-              <span
-                className="profile-balance"
-                title={`cash ${usd(totals.cashUsd)} + holdings ${usd(totals.holdingsUsd)}`}
-              >
-                {usd(totals.totalUsd)}
-              </span>
-            )}
-          </span>
-        </button>
-      )}
-
       <span className="status">
         <span className="dot" data-live={status === 'authenticated' ? 'true' : 'false'} />
         {STATUS_TEXT[status]}
       </span>
-      <button className="ghost-button" onClick={onDismiss}>
-        Close (Esc)
-      </button>
+
+      {user && (
+        <span className="wallet">
+          {totals && (
+            <>
+              <span className="wallet-stat" title="Cash — USDC across chains">
+                <span className="wallet-value">{usd(totals.cashUsd)}</span>
+                <span className="wallet-label">Cash</span>
+              </span>
+              <span
+                className="wallet-stat"
+                title={`Token holdings — total portfolio ${usd(totals.totalUsd)} including cash`}
+              >
+                <span className="wallet-value">{usd(totals.holdingsUsd)}</span>
+                <span className="wallet-label">Portfolio</span>
+              </span>
+            </>
+          )}
+          <button
+            className="profile"
+            onClick={() => user.userHandle && onNavigate(`/profile/${user.userHandle}`)}
+            title={profileName + (user.userHandle ? ` (@${user.userHandle})` : '')}
+          >
+            <CircleImage src={user.profilePictureLink} label={profileName} className="profile-avatar" />
+          </button>
+        </span>
+      )}
     </header>
   )
 }

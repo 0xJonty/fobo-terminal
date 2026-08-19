@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>fobo terminal</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        min-width: 260px;
+        background: #12111a;
+        color: #f7f7f7;
+        font: 13px/1.4 -apple-system, 'Segoe UI', system-ui, sans-serif;
+      }
+      .card { padding: 14px 16px; }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .title { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+      .title span { color: #516af6; }
+      .sub { margin: 2px 0 0; font-size: 11px; color: #9899a3; }
+
+      /* Apple-style switch: pill track, round white knob, iOS green when on. */
+      .switch { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
+      .switch input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+      .slider {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+        background: #39383f;
+        transition: background 0.2s;
+        pointer-events: none;
+      }
+      .slider::before {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 27px;
+        height: 27px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 3px 8px rgb(0 0 0 / 0.35), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+        transition: transform 0.2s cubic-bezier(0.3, 0.7, 0.4, 1);
+      }
+      input:checked + .slider { background: #34c759; }
+      input:checked + .slider::before { transform: translateX(20px); }
+      input:focus-visible + .slider { outline: 2px solid #516af6; outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="row">
+        <div>
+          <p class="title">fobo<span>.</span> terminal</p>
+          <p class="sub">Show the terminal on fomo.family</p>
+        </div>
+        <label class="switch">
+          <input id="enabled" type="checkbox" aria-label="Show the terminal on fomo.family" />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

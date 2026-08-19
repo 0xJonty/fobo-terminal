@@ -17,7 +17,8 @@ export default defineManifest({
   host_permissions: [FOMO],
 
   action: {
-    default_title: 'Toggle fobo terminal',
+    default_title: 'fobo terminal',
+    default_popup: 'src/popup/index.html',
   },
 
   background: {
