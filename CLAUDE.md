@@ -57,8 +57,23 @@ branch that suppressed the mount. No line at all means the content script never 
 
 - There is no `/` home route. fomo redirects `/` straight to a coin page, so anything gating on a
   URL shape silently never fires.
-- Isolated-world content scripts cannot intercept the page's `history.pushState`, so client-side
-  route changes must be polled — see `src/content/index.tsx`.
+- Isolated-world content scripts cannot intercept the page's `history.pushState`, so observing
+  route changes needs the poll in `src/content/index.tsx`. Driving the router the other way DOES
+  work: `history.pushState` + a synthetic `PopStateEvent` crosses the world boundary and fomo's
+  router follows it (verified live) — never fall back to `location.assign` for in-app navigation.
+- fomo's REST API works from the content script (same-origin CORS): wrapper, endpoints, and the
+  header arithmetic all live in `src/lib/fomoApi.ts`, each mirrored from fomo's own bundle call
+  sites. Extend that file the same way — read their code, never guess a shape or a formula.
+- fomo's frontend is minified but readable: `curl fomo.family` lists `/assets/*.js` chunks
+  (download all, grep). Endpoints appear as `"/v2/..."` literals; UI strings live in the i18n
+  chunk — find the string, take its key, grep other chunks for the key to locate the component.
+- Live verification: `opencli browser <session> open|state|eval|screenshot` drives the user's
+  real logged-in Chrome. `eval` runs in page context, so fetches to prod-api.fomo.family carry
+  the real session — use it to confirm response shapes and computed styles before coding.
+- The terminal is away-by-default: it mounts only on paths marked in sessionStorage
+  (`fobo:terminal-paths`) — the `/` entry's landing page, an explicit summon, or Back onto one.
+  Everything else (profiles, coin pages, fomo-internal links) belongs to fomo. Do not regress to
+  mount-everywhere; that covered pages the user had just navigated to.
 
 ## Git
 
