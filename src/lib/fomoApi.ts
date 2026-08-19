@@ -35,6 +35,9 @@ interface Envelope<T> {
  * One authorized call, mirroring fomo's own wrapper: JSON content type, Bearer JWT,
  * X-Supported-Chains, credentials included. Null on any failure — every caller treats the API
  * as optional decoration, so a failure means a sparser top bar, never a broken one.
+ *
+ * Exported (as fomoCall) for the other lib modules that call fomo endpoints, e.g. the alerts
+ * feed — one wrapper, one set of headers, one envelope.
  */
 async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
   const jwt = readJwt()
@@ -64,6 +67,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
     return null
   }
 }
+
+export { call as fomoCall }
 
 function num(value: unknown): number | undefined {
   if (value === null || value === undefined || value === '') return undefined

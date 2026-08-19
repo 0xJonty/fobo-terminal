@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertsPanel } from '~/ui/AlertsPanel'
 import { Column } from '~/ui/Column'
 import { TopBar } from '~/ui/TopBar'
+import { fetchAlertsPage, mergeAlerts, parseAlert, type AlertItem } from '~/lib/alerts'
+import { currentUser } from '~/lib/fomoApi'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { metricsFor, warm } from '~/lib/mobula'
 import { LIST_KEYS, LIST_LABEL, type ListKey } from '~/lib/protocol'
+import { readAlertsSettings, watchAlertsSettings, type AlertsSettings } from '~/lib/settings'
 import { tokenKey, type Token } from '~/types/token'
 
 type Lists = Record<ListKey, Token[]>
@@ -51,9 +55,55 @@ export function App({
     )
   }, [])
 
-  // One socket, all three topics. See lib/fomoSocket.ts for why we connect rather than observe.
+  /* ---- alerts panel: settings, backfill, live feed ---- */
+
+  const [alertsSettings, setAlertsSettings] = useState<AlertsSettings | null>(null)
   useEffect(() => {
-    const close = createFomoSocket({
+    void readAlertsSettings().then(setAlertsSettings)
+    return watchAlertsSettings(setAlertsSettings)
+  }, [])
+
+  const [alerts, setAlerts] = useState<AlertItem[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(true)
+  const [alertsHasMore, setAlertsHasMore] = useState(false)
+  const [alertsLoadingMore, setAlertsLoadingMore] = useState(false)
+  // fomo pages by the last RAW item's id, which our parse filtering must not lose.
+  const alertsLastId = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchAlertsPage().then((page) => {
+      if (cancelled || !page) {
+        if (!cancelled) setAlertsLoading(false)
+        return
+      }
+      alertsLastId.current = page.lastId
+      setAlerts((current) => mergeAlerts(current, page.items))
+      setAlertsHasMore(page.hasNextPage)
+      setAlertsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const loadMoreAlerts = useCallback(() => {
+    const lastId = alertsLastId.current
+    if (!lastId) return
+    setAlertsLoadingMore(true)
+    void fetchAlertsPage(lastId).then((page) => {
+      setAlertsLoadingMore(false)
+      if (!page) return
+      alertsLastId.current = page.lastId ?? alertsLastId.current
+      setAlerts((current) => mergeAlerts(current, page.items))
+      setAlertsHasMore(page.hasNextPage)
+    })
+  }, [])
+
+  // One socket, all list topics plus the alerts feed. See lib/fomoSocket.ts for why we
+  // connect rather than observe.
+  useEffect(() => {
+    const socket = createFomoSocket({
       onStatus: setStatus,
       onDiff: (list, diff) => {
         if (diff.kind === 'new') {
@@ -66,8 +116,18 @@ export function App({
         }
         setLists((current) => ({ ...current, [list]: applyDiff(current[list], diff) }))
       },
+      onAlert: (payload) => {
+        const item = parseAlert(payload)
+        if (!item) return
+        markFresh(item.id)
+        setAlerts((current) => mergeAlerts(current, [item]))
+      },
     })
-    return close
+    // The alerts topic wants the user's own id, which only the API knows.
+    void currentUser().then((user) => {
+      if (user) socket.setAlertUser(user.id)
+    })
+    return socket.close
   }, [markFresh])
 
   useEffect(() => {
@@ -138,18 +198,33 @@ export function App({
     <div className="shell">
       <TopBar onNavigate={onOpen} onDeposit={onDeposit} />
 
-      <div className="columns">
-        {LIST_KEYS.map((key) => (
-          <Column
-            key={key}
-            title={LIST_LABEL[key]}
-            tokens={enriched[key]}
-            loading={totalRows === 0 && status !== 'unauthenticated'}
-            showBond={key === 'pre-graduated'}
-            freshKeys={freshKeys}
-            onOpen={open}
-          />
-        ))}
+      <div className="main" data-alerts-side={alertsSettings?.enabled ? alertsSettings.side : undefined}>
+        {alertsSettings?.enabled && (
+          <div className="alerts-slot" style={{ width: alertsSettings.width }}>
+            <AlertsPanel
+              alerts={alerts}
+              loading={alertsLoading}
+              hasMore={alertsHasMore}
+              loadingMore={alertsLoadingMore}
+              freshKeys={freshKeys}
+              onLoadMore={loadMoreAlerts}
+              onOpen={onOpen}
+            />
+          </div>
+        )}
+        <div className="columns">
+          {LIST_KEYS.map((key) => (
+            <Column
+              key={key}
+              title={LIST_LABEL[key]}
+              tokens={enriched[key]}
+              loading={totalRows === 0 && status !== 'unauthenticated'}
+              showBond={key === 'pre-graduated'}
+              freshKeys={freshKeys}
+              onOpen={open}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )

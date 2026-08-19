@@ -7,16 +7,20 @@
       :root { color-scheme: dark; }
       body {
         margin: 0;
-        min-width: 260px;
+        min-width: 280px;
         background: #12111a;
         color: #f7f7f7;
         font: 13px/1.4 -apple-system, 'Segoe UI', system-ui, sans-serif;
       }
       .card { padding: 14px 16px; }
       .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .row + .row { margin-top: 12px; }
       .title { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
       .title span { color: #516af6; }
       .sub { margin: 2px 0 0; font-size: 11px; color: #9899a3; }
+      .divider { height: 1px; background: rgb(203 208 235 / 0.1); margin: 14px 0; }
+      .label { font-size: 12px; }
+      .hint { margin: 2px 0 0; font-size: 10px; color: #9899a3; }
 
       /* Apple-style switch: pill track, round white knob, iOS green when on. */
       .switch { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
@@ -52,6 +56,44 @@
       input:checked + .slider { background: #34c759; }
       input:checked + .slider::before { transform: translateX(20px); }
       input:focus-visible + .slider { outline: 2px solid #516af6; outline-offset: 2px; }
+
+      /* Segmented control for the panel side. */
+      .segment {
+        display: flex;
+        background: #1c1b26;
+        border: 1px solid rgb(203 208 235 / 0.1);
+        border-radius: 8px;
+        padding: 2px;
+        flex-shrink: 0;
+      }
+      .segment button {
+        border: 0;
+        background: transparent;
+        color: #9899a3;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .segment button[aria-pressed='true'] { background: #516af6; color: #fff; }
+      .segment button:focus-visible { outline: 2px solid #516af6; outline-offset: 1px; }
+
+      /* Width slider. */
+      .width-row { display: flex; align-items: center; gap: 10px; flex: 1; }
+      input[type='range'] {
+        flex: 1;
+        accent-color: #516af6;
+        margin: 0;
+      }
+      .width-value {
+        font-size: 11px;
+        color: #9899a3;
+        font-variant-numeric: tabular-nums;
+        min-width: 44px;
+        text-align: right;
+      }
     </style>
   </head>
   <body>
@@ -65,6 +107,35 @@
           <input id="enabled" type="checkbox" aria-label="Show the terminal on fomo.family" />
           <span class="slider"></span>
         </label>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div>
+          <p class="label">Alerts panel</p>
+          <p class="hint">Trading activity of traders you follow</p>
+        </div>
+        <label class="switch">
+          <input id="alerts-enabled" type="checkbox" aria-label="Show the alerts panel" />
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="row">
+        <p class="label">Side</p>
+        <div class="segment" role="group" aria-label="Alerts panel side">
+          <button id="side-left" type="button" aria-pressed="false">Left</button>
+          <button id="side-right" type="button" aria-pressed="true">Right</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <p class="label">Width</p>
+        <div class="width-row">
+          <input id="alerts-width" type="range" min="280" max="480" step="10" aria-label="Alerts panel width" />
+          <span class="width-value" id="width-value">340px</span>
+        </div>
       </div>
     </main>
     <script type="module" src="./main.ts"></script>

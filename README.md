@@ -23,8 +23,11 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Diff reducer matching fomo's `snapshot / new / update / remove` semantics
 - [x] Mobula Pulse enrichment for holder/risk metrics
 - [x] Three virtualised columns, Axiom-style cards, shadow-DOM isolation
+- [x] Alerts panel: fomo's followed-traders activity feed beside the columns, side and width
+      configurable from the toolbar popup
 - [ ] Manual verification in Chrome
 - [ ] Per-column filters and sort
+- [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)
 
 ## What it does
 
@@ -35,6 +38,18 @@ cap, volume, liquidity, age, price change, trade pressure, and holder-concentrat
 the Bonding column.
 
 Clicking a card opens that token on fomo. That is the only action a card has.
+
+### Alerts panel
+
+A fourth rail showing fomo's own Alerts feed — the trading activity of traders you follow:
+swaps and transfers, multi-user buy/sell clusters, theses, and profit milestones. Backfilled
+from `GET /feed/tradingActivity` and updated live over the same WebSocket (topic
+`trading_activity`), both mirrored from fomo's own client. Scrolling the panel pages further
+back; clicking a row opens the token, clicking a trader opens their profile.
+
+The toolbar popup controls it: on/off, left or right side (default right), and width
+(280–480 px). Rows on chains fobo cannot name are dropped rather than mislabelled, and a row
+only ever shows fields the feed actually carried.
 
 ### Scope limits
 

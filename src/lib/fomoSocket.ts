@@ -28,18 +28,42 @@ const TOPIC_ID = SUPPORTED_CHAINS
 
 const TOPICS = Object.keys(TOPIC_TO_LIST)
 
+/**
+ * fomo's alerts feed topic. Unlike the list topics its topicId is the user's own id, and each
+ * data frame's payload is one feed item rather than a diff — both verified against live frames.
+ */
+const ALERT_TOPIC = 'trading_activity'
+
 export type SocketStatus = 'connecting' | 'authenticated' | 'closed' | 'unauthenticated'
 
 export interface FomoSocketHandlers {
   onDiff: (list: ListKey, diff: ListDiff) => void
   onStatus: (status: SocketStatus) => void
+  /** One alerts feed item, raw off the wire. Parse with parseAlert. */
+  onAlert?: (payload: unknown) => void
 }
 
-export function createFomoSocket({ onDiff, onStatus }: FomoSocketHandlers): () => void {
+export interface FomoSocket {
+  close: () => void
+  /**
+   * Subscribe the alerts topic for this user. The id arrives asynchronously (from
+   * /v2/users/current), so it is set after connect; reconnects resubscribe automatically.
+   */
+  setAlertUser: (userId: string) => void
+}
+
+export function createFomoSocket({ onDiff, onStatus, onAlert }: FomoSocketHandlers): FomoSocket {
   let socket: WebSocket | null = null
   let closed = false
   let attempt = 0
   let retryTimer: number | undefined
+  let ready = false
+  let alertUserId: string | null = null
+
+  function subscribeAlerts(): void {
+    if (!ready || alertUserId === null) return
+    socket?.send(JSON.stringify({ type: 'subscribe', topicType: ALERT_TOPIC, topicId: alertUserId }))
+  }
 
   function scheduleRetry(): void {
     if (closed) return
@@ -86,16 +110,24 @@ export function createFomoSocket({ onDiff, onStatus }: FomoSocketHandlers): () =
 
         case 'challengeAccepted': {
           attempt = 0
+          ready = true
           onStatus('authenticated')
           for (const topicType of TOPICS) {
             socket?.send(JSON.stringify({ type: 'subscribe', topicType, topicId: TOPIC_ID }))
           }
+          subscribeAlerts()
           return
         }
 
         case 'data': {
           const topicType = frame.topicType
           if (typeof topicType !== 'string') return
+
+          if (topicType === ALERT_TOPIC) {
+            onAlert?.(frame.payload)
+            return
+          }
+
           const list = TOPIC_TO_LIST[topicType]
           if (!list) return
 
@@ -120,6 +152,7 @@ export function createFomoSocket({ onDiff, onStatus }: FomoSocketHandlers): () =
     })
 
     socket.addEventListener('close', () => {
+      ready = false
       onStatus('closed')
       socket = null
       scheduleRetry()
@@ -132,14 +165,21 @@ export function createFomoSocket({ onDiff, onStatus }: FomoSocketHandlers): () =
 
   connect()
 
-  return () => {
-    closed = true
-    if (retryTimer !== undefined) window.clearTimeout(retryTimer)
-    try {
-      socket?.close()
-    } catch {
-      /* already gone */
-    }
-    socket = null
+  return {
+    close: () => {
+      closed = true
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer)
+      try {
+        socket?.close()
+      } catch {
+        /* already gone */
+      }
+      socket = null
+    },
+    setAlertUser: (userId: string) => {
+      if (userId === alertUserId) return
+      alertUserId = userId
+      subscribeAlerts()
+    },
   }
 }
