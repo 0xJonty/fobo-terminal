@@ -4,7 +4,7 @@ import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { metricsFor, warm } from '~/lib/mobula'
 import { LIST_KEYS, LIST_LABEL, type ListKey } from '~/lib/protocol'
-import type { Token } from '~/types/token'
+import { tokenKey, type Token } from '~/types/token'
 
 type Lists = Record<ListKey, Token[]>
 
@@ -20,7 +20,13 @@ const STATUS_TEXT: Record<SocketStatus, string> = {
   unauthenticated: 'signed out',
 }
 
-export function App({ onDismiss }: { onDismiss: () => void }) {
+export function App({
+  onDismiss,
+  onOpen,
+}: {
+  onDismiss: () => void
+  onOpen: (href: string) => void
+}) {
   const [lists, setLists] = useState<Lists>(EMPTY)
   const [status, setStatus] = useState<SocketStatus>('connecting')
   const [freshKeys, setFreshKeys] = useState<ReadonlySet<string>>(new Set())
@@ -61,7 +67,7 @@ export function App({ onDismiss }: { onDismiss: () => void }) {
           const address = raw?.token?.address
           const networkId = raw?.token?.networkId
           if (typeof address === 'string' && typeof networkId === 'number') {
-            markFresh(`${address}:${networkId}`)
+            markFresh(tokenKey(address, networkId))
           }
         }
         setLists((current) => ({ ...current, [list]: applyDiff(current[list], diff) }))
@@ -127,10 +133,12 @@ export function App({ onDismiss }: { onDismiss: () => void }) {
       // A full navigation rather than a synthetic history event: fomo's router lives in the
       // page's own JS world, so driving it from here is not reliable. Opening a coin is a
       // deliberate context switch, so the reload cost is acceptable.
-      window.location.assign(`/tokens/${token.chain}/${token.address}`)
-      onDismiss()
+      //
+      // Note we do NOT dismiss on the way out. Dismissing wrote a session flag that outlived the
+      // navigation, so pressing Back landed on the home route with the terminal suppressed.
+      onOpen(`/tokens/${token.chain}/${token.address}`)
     },
-    [onDismiss],
+    [onOpen],
   )
 
   const totalRows = LIST_KEYS.reduce((sum, key) => sum + lists[key].length, 0)

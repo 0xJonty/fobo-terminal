@@ -5,7 +5,8 @@
   "description": "Chrome extension that gives fomo.family an Axiom-Pulse-style three-column home screen",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite build --watch",
+    "watch": "vite build --watch",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit"
   },

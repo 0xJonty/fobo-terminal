@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Boxes, ChefHat, Crosshair, Droplet, Ghost, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
 import { Metric, riskClass } from '~/ui/Metric'
@@ -13,25 +13,49 @@ import type { Token } from '~/types/token'
  * control, and nothing here reads wallet state.
  */
 
+/**
+ * Initials stand in whenever we have no usable image — either the row carried no logo, or the URL
+ * it carried failed to load. Plenty of fresh launches point at art that 404s or is still
+ * propagating, and without the onError path those rows rendered a broken-image glyph.
+ */
 function Avatar({ token }: { token: Token }) {
-  if (token.logo) {
-    return <img className="avatar" src={token.logo} alt="" loading="lazy" decoding="async" />
+  const [failed, setFailed] = useState(false)
+
+  // Rows are virtualised and recycled, so the same Avatar instance can be handed a different
+  // token. Clear the failure when the URL changes or a retry never happens.
+  useEffect(() => setFailed(false), [token.logo])
+
+  if (token.logo && !failed) {
+    return (
+      <img
+        className="avatar"
+        src={token.logo}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+      />
+    )
   }
   return (
     <div className="avatar avatar-fallback" aria-hidden="true">
-      {(token.symbol || '?').slice(0, 3).toUpperCase()}
+      {(token.symbol || token.name || '?').slice(0, 3).toUpperCase()}
     </div>
   )
 }
 
+/**
+ * Buy/sell split. Both sides must be known: coercing a missing count to 0 drew a bar claiming
+ * "0 sells" for a token we simply had no sell data for, which is a fabricated reading of a real
+ * risk signal.
+ */
 function Pressure({ buys, sells }: { buys?: number; sells?: number }) {
-  const b = buys ?? 0
-  const s = sells ?? 0
-  const total = b + s
-  if (total === 0) return null
-  const buyPct = (b / total) * 100
+  if (buys === undefined || sells === undefined) return null
+  const total = buys + sells
+  if (total <= 0) return null
+  const buyPct = (buys / total) * 100
   return (
-    <span className="pressure" title={`${b} buys / ${s} sells (1h)`}>
+    <span className="pressure" title={`${buys} buys / ${sells} sells (1h)`}>
       <span className="pressure-buy" style={{ width: `${buyPct}%` }} />
       <span className="pressure-sell" style={{ width: `${100 - buyPct}%` }} />
     </span>
@@ -106,7 +130,12 @@ export const TokenCard = memo(function TokenCard({
             />
           )}
           <span className="line-end">
-            <span className="stat-label">VOL</span>
+            {/*
+              * The label has to name the window the number actually came from. This used to read
+              * `volume24 ?? volume1h` under a fixed "VOL" heading, so a token with no 24h figure
+              * showed its 1h volume captioned as a 24h one.
+              */}
+            <span className="stat-label">{token.volume24 !== undefined ? 'VOL' : 'VOL 1H'}</span>
             <span className="stat">{usd(token.volume24 ?? m?.volume1h)}</span>
           </span>
         </span>
@@ -137,7 +166,11 @@ export const TokenCard = memo(function TokenCard({
                 <Metric
                   icon={Crosshair}
                   value={count(m.snipersCount)}
-                  title="Snipers"
+                  title={
+                    m.snipersHoldings === undefined
+                      ? 'Sniper wallets'
+                      : `Sniper wallets — holding ${percent(m.snipersHoldings, 0)} of supply`
+                  }
                   tone={riskClass(m.snipersHoldings)}
                 />
               )}

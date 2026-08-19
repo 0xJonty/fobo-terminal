@@ -23,20 +23,21 @@ export default defineConfig(({ mode }) => {
       // Required by Vite when outDir sits outside the project root.
       emptyOutDir: true,
     },
-    server: {
-      // 5173 is occupied by a Windows service on this machine; this WSL runs in mirrored
-      // networking mode, so WSL and Windows share one localhost and one port space.
-      port: Number(process.env.FOBO_DEV_PORT ?? env.FOBO_DEV_PORT ?? 5180),
-      strictPort: true,
-      /*
-       * Bind explicitly to 127.0.0.1 rather than `true`/localhost.
-       *
-       * This WSL runs networkingMode=mirrored, so Windows and WSL share a loopback.
-       * CRXJS hardcodes `localhost` into the dev loader, and Windows resolves localhost to
-       * IPv6 ::1 first — so an IPv4-only bind (0.0.0.0 or 127.0.0.1) times out in Chrome
-       * even though 127.0.0.1 works. '::' binds dual-stack, covering ::1 and IPv4.
-       */
-      host: process.env.FOBO_DEV_HOST ?? env.FOBO_DEV_HOST ?? '::',
-    },
+    /*
+     * No dev-server config, on purpose. `vite` (CRXJS serve mode) is not usable here:
+     *
+     *  - CRXJS hardcodes `localhost` into its dev loader, and across a mirrored-networking WSL
+     *    boundary Windows resolves that to IPv6 `::1`, which never answers. The extension cannot
+     *    reach the dev server at all.
+     *  - CRXJS 2.7.1 ships a broken HMR client regardless: it substitutes its `__LIVE_RELOAD__`
+     *    placeholder with `String.prototype.replace` and a string pattern, which rewrites only
+     *    the first of the two occurrences. The one left in the socket-close handler throws
+     *    `ReferenceError: __LIVE_RELOAD__ is not defined` the moment the connection drops, taking
+     *    the service worker down and leaving the content script talking to a dead port
+     *    ("Attempting to use a disconnected port object", "Extension context invalidated").
+     *
+     * `vite build --watch` produces a self-contained build with none of that machinery, so both
+     * `npm run dev` and `npm run watch` use it.
+     */
   }
 })

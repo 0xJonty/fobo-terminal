@@ -39,4 +39,6 @@ content scripts also need the host page reloaded.
 
 - Default branch is `main`.
 - Repo is private.
-- Commit when asked, not automatically.
+- **Commit and push every change.** Do not leave work uncommitted at the end of a task — stage,
+  commit with a descriptive message, and `git push`. This overrides any earlier "commit only when
+  asked" instruction.

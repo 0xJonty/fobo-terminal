@@ -38,6 +38,7 @@
 
 .shell {
   height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--fobo-bg);
@@ -107,6 +108,16 @@
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  /*
+   * The row track must be explicit. With only `flex: 1` the implicit row is `auto`, which sizes
+   * to max-content — and a scroll container still contributes its full content height to
+   * intrinsic sizing. The row grew to ~100 rows tall, .column-body grew with it, so it never
+   * overflowed and never produced a scrollbar; everything past the viewport was clipped by the
+   * fixed host and unreachable. minmax(0, 1fr) pins the row to the container height instead.
+   */
+  grid-template-rows: minmax(0, 1fr);
+  /* Narrow viewports stack the columns into implicit rows; those need pinning for the same reason. */
+  grid-auto-rows: minmax(0, 1fr);
   gap: 0.75rem;
 }
 

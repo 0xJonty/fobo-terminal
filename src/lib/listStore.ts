@@ -12,7 +12,7 @@
  */
 
 import type { ListDiff } from '~/lib/protocol'
-import { fromFomoRow, type Token } from '~/types/token'
+import { fromFomoRow, normalizeKey, type Token } from '~/types/token'
 
 /**
  * fomo caps at 100 rows when it *renders*, not in its reducer — its store keeps the full
@@ -54,13 +54,15 @@ export function applyDiff(current: readonly Token[], diff: ListDiff): Token[] {
     case 'update': {
       const row = fromFomoRow(diff.update)
       if (!row) return current as Token[]
-      const without = removeByKey(current, diff.tokenKey || row.key)
+      // Keys we build are case-folded for EVM; the wire key is not, so fold it before matching
+      // or an 'update' would insert a second copy instead of moving the existing row.
+      const without = removeByKey(current, diff.tokenKey ? normalizeKey(diff.tokenKey) : row.key)
       return insertAt(without, diff.index, row)
     }
 
     case 'remove': {
       if (typeof diff.tokenKey !== 'string') return current as Token[]
-      return removeByKey(current, diff.tokenKey)
+      return removeByKey(current, normalizeKey(diff.tokenKey))
     }
 
     default:
