@@ -19,25 +19,24 @@ const ENABLED_KEY = 'fobo:enabled'
 const DISMISSED_KEY = 'fobo:dismissed'
 
 /**
- * Paths fobo deliberately navigated to, so it can stay out of the way on the coin page the user
- * asked for.
+ * Paths where the terminal shows. Everywhere else it stays away.
  *
- * This replaces an earlier "mount on `/` only" rule, which never fired: fomo redirects `/`
- * straight to a coin page, so the home route the rule waited for does not exist in practice.
- *
- * Recording the destination rather than a global "dismissed" flag is also what makes Back work.
- * The flag used to outlive the navigation, so returning from a coin found fobo suppressed; a
- * per-path record only suppresses the coin page itself, and every other entry in the history
- * (including the one the user came from) mounts normally.
+ * This inverts the earlier model, which recorded the paths to stay away FROM and mounted on
+ * everything else. That polarity broke fomo's own internal navigation: clicking a profile (or any
+ * in-app link) landed on a path with no record, so the terminal mounted over the exact page the
+ * user had just asked for. Away-by-default matches what the terminal is — a home screen. A path
+ * earns a mark in exactly three ways: the tab was entered through `/` (the home intent), the user
+ * summoned the terminal here (launcher or toolbar), or fomo's `/` redirect landed here mid-boot.
+ * Back onto a marked path remounts; everything else is fomo's.
  */
-const HANDOFF_KEY = 'fobo:handoff'
+const TERMINAL_KEY = 'fobo:terminal-paths'
 
 /** Bounded so a long session cannot grow this without limit. */
-const HANDOFF_LIMIT = 20
+const MARK_LIMIT = 20
 
-function readHandoffs(): string[] {
+function readMarks(): string[] {
   try {
-    const raw = window.sessionStorage.getItem(HANDOFF_KEY)
+    const raw = window.sessionStorage.getItem(TERMINAL_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : []
@@ -46,26 +45,26 @@ function readHandoffs(): string[] {
   }
 }
 
-function writeHandoffs(paths: readonly string[]): void {
+function writeMarks(paths: readonly string[]): void {
   try {
-    window.sessionStorage.setItem(HANDOFF_KEY, JSON.stringify(paths.slice(-HANDOFF_LIMIT)))
+    window.sessionStorage.setItem(TERMINAL_KEY, JSON.stringify(paths.slice(-MARK_LIMIT)))
   } catch {
     /* private mode — fall back to in-memory behaviour */
   }
 }
 
-function rememberHandoff(path: string): void {
-  const paths = readHandoffs().filter((p) => p !== path)
+function markTerminal(path: string): void {
+  const paths = readMarks().filter((p) => p !== path)
   paths.push(path)
-  writeHandoffs(paths)
+  writeMarks(paths)
 }
 
-function forgetHandoff(path: string): void {
-  writeHandoffs(readHandoffs().filter((p) => p !== path))
+function unmarkTerminal(path: string): void {
+  writeMarks(readMarks().filter((p) => p !== path))
 }
 
-function isHandoff(path: string): boolean {
-  return readHandoffs().includes(path)
+function isTerminalPath(path: string): boolean {
+  return readMarks().includes(path)
 }
 
 function isDismissed(): boolean {
@@ -164,9 +163,9 @@ function showLauncher(): void {
     ].join(';'),
   )
   button.addEventListener('click', () => {
-    // An explicit summon overrides both suppression reasons for this page.
+    // An explicit summon: clear the dismissal and claim this page for the terminal.
     setDismissed(false)
-    forgetHandoff(window.location.pathname)
+    markTerminal(window.location.pathname)
     removeLauncher()
     void sync()
   })
@@ -228,10 +227,94 @@ function dismiss(): void {
   showLauncher()
 }
 
+/**
+ * fomo's own top bar — logo, search, wallet/profile — must stay visible and usable above the
+ * terminal, so the overlay sits below it rather than over it: top offset to the bar's bottom
+ * edge, z-index one below the bar's own stacking context so the bar's dropdowns (profile menu,
+ * search results) keep painting on top of us. fomo's bundle is hashed per deploy, so the bar is
+ * found by shape, not by class name; when nothing bar-shaped exists (marketing page, mid-boot)
+ * the overlay covers everything, exactly as before.
+ */
+const FULL_COVER_Z = 2147483000
+const BAR_MIN_H = 30
+const BAR_MAX_H = 160
+
+function findFomoBar(): HTMLElement | null {
+  const isBar = (el: HTMLElement): boolean => {
+    if (el === host || el === launcher || el.contains(host as Node)) return false
+    const rect = el.getBoundingClientRect()
+    if (rect.top > 1 || rect.height < BAR_MIN_H || rect.height > BAR_MAX_H) return false
+    if (rect.width < window.innerWidth * 0.8) return false
+    const cs = window.getComputedStyle(el)
+    return cs.display !== 'none' && cs.visibility !== 'hidden'
+  }
+
+  for (const el of document.querySelectorAll<HTMLElement>('header, [role="banner"], nav')) {
+    if (isBar(el)) return el
+  }
+
+  // The bar may be a plain div: look shallowly for a pinned, full-width strip.
+  for (const child of document.body.children) {
+    if (!(child instanceof HTMLElement)) continue
+    for (const el of [child, ...child.children]) {
+      if (!(el instanceof HTMLElement)) continue
+      const position = window.getComputedStyle(el).position
+      if ((position === 'fixed' || position === 'sticky') && isBar(el)) return el
+    }
+  }
+  return null
+}
+
+/** The z-index of the element's nearest self-or-ancestor stacking context, if numeric. */
+function stackLevel(el: HTMLElement): number | null {
+  for (let node: HTMLElement | null = el; node && node !== document.body; node = node.parentElement) {
+    const cs = window.getComputedStyle(node)
+    if (cs.position !== 'static' && cs.zIndex !== 'auto') {
+      const z = Number.parseInt(cs.zIndex, 10)
+      if (Number.isFinite(z)) return z
+    }
+  }
+  return null
+}
+
+let lastBarState: string | null = null
+
+function layoutHost(): void {
+  if (!host) return
+  const bar = findFomoBar()
+
+  let top = 0
+  let z = FULL_COVER_Z
+  if (bar) {
+    top = Math.max(0, Math.round(bar.getBoundingClientRect().bottom))
+    const barZ = stackLevel(bar)
+    // A bar low in the stack means our z-1 could sink below page content; cover-all is safer.
+    if (barZ !== null && barZ > 10) z = barZ - 1
+  }
+  host.style.top = `${top}px`
+  host.style.zIndex = String(z)
+
+  const state = bar ? `topbar ${top}px, overlay z ${z}` : 'no topbar found — full cover'
+  if (state !== lastBarState) {
+    lastBarState = state
+    console.info(`[fobo] ${state}`)
+  }
+}
+
+window.addEventListener('resize', () => {
+  if (host && host.dataset.foboHidden === undefined) layoutHost()
+})
+
+// The bar can render after we mount (fomo still booting) and can change height responsively.
+window.setInterval(() => {
+  if (host && host.dataset.foboHidden === undefined) layoutHost()
+}, 1_000)
+
 function render(): void {
   if (host) {
     delete host.dataset.foboHidden
     lockPageScroll()
+    layoutHost()
     return
   }
   if (document.getElementById(HOST_ID)) return
@@ -253,6 +336,7 @@ function render(): void {
   shadow.append(container)
   document.body.append(host)
   lockPageScroll()
+  layoutHost()
 
   root = createRoot(container)
   root.render(
@@ -263,16 +347,14 @@ function render(): void {
 }
 
 /**
- * Opening a coin is a handoff, not a dismissal: we record the destination so fobo stays out of
- * the way there, while every other history entry — the one Back returns to included — still
- * mounts.
+ * Client-side navigation out of the terminal. history is shared state across worlds, so
+ * pushState from here moves the real URL, and the synthetic PopStateEvent crosses the
+ * isolated/main boundary, which is what makes fomo's router re-read location and swap the view —
+ * no full page load. Back is a real popstate onto a path that stays marked, so the terminal
+ * remounts just as instantly. location.assign survives only as the fallback.
  *
- * The navigation itself is client-side. history is shared state across worlds, so pushState from
- * here moves the real URL, and the synthetic PopStateEvent crosses the isolated/main boundary,
- * which is what makes fomo's router re-read location and swap the view — no full page load.
- * Back is a real popstate and remounts the terminal just as instantly. The previous
- * location.assign round-tripped the entire fomo bundle in both directions, and is kept only as
- * the fallback.
+ * Away-by-default means the destination needs no record to open as fomo — but a stale mark from
+ * an earlier summon there must not resurrect the terminal over it.
  */
 function navigate(href: string): void {
   let path: string
@@ -281,7 +363,7 @@ function navigate(href: string): void {
   } catch {
     return
   }
-  rememberHandoff(path)
+  if (path !== window.location.pathname) unmarkTerminal(path)
   try {
     window.history.pushState(null, '', href)
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -294,14 +376,13 @@ function navigate(href: string): void {
 }
 
 /** Why fobo is or is not on screen. Surfaced so a mount failure is diagnosable from the console. */
-type Decision = 'mount' | 'marketing' | 'disabled' | 'dismissed' | 'handoff'
+type Decision = 'mount' | 'marketing' | 'disabled' | 'dismissed' | 'away'
 
 async function decide(): Promise<Decision> {
   if (isMarketingPage()) return 'marketing'
   if (!(await readEnabled())) return 'disabled'
   if (isDismissed()) return 'dismissed'
-  if (isHandoff(window.location.pathname)) return 'handoff'
-  return 'mount'
+  return isTerminalPath(window.location.pathname) ? 'mount' : 'away'
 }
 
 let lastDecision: Decision | null = null
@@ -321,7 +402,7 @@ async function sync(): Promise<void> {
     return
   }
 
-  if (decision === 'dismissed' || decision === 'handoff') {
+  if (decision === 'dismissed' || decision === 'away') {
     hide()
     showLauncher()
     return
@@ -341,8 +422,14 @@ async function sync(): Promise<void> {
 let lastPath = window.location.pathname
 function watchRoute(): void {
   const check = () => {
-    if (window.location.pathname === lastPath) return
-    lastPath = window.location.pathname
+    const path = window.location.pathname
+    if (path === lastPath) return
+    if (pendingHomeMark && lastPath === '/') {
+      // fomo's redirect off `/` just fired: the home intent follows it to wherever it landed.
+      markTerminal(path)
+      pendingHomeMark = false
+    }
+    lastPath = path
     void sync()
   }
   window.addEventListener('popstate', check)
@@ -384,7 +471,7 @@ try {
     if (message.enabled) {
       // A toolbar toggle back on is an explicit summon, same as the launcher.
       setDismissed(false)
-      forgetHandoff(window.location.pathname)
+      markTerminal(window.location.pathname)
     }
     void sync()
   })
@@ -392,35 +479,40 @@ try {
   // Orphaned content script from a previous extension version — the fresh one owns messaging.
 }
 
-/** Paths that render fomo's coin view. Cards link here; the `/` redirect also lands here. */
-const COIN_PATH = /^\/tokens\//
-
 /**
- * A tab whose very first URL is already a coin page was opened at that coin on purpose —
- * right-click → open in new tab on a card, a ctrl-click, a pasted link. A fresh tab holds no
- * handoff records (sessionStorage starts empty), so without this the terminal mounted over the
- * exact page the user asked for. Record the entry as a handoff before the first sync.
- *
- * Arriving via the `/` redirect keeps mounting, and stays distinguishable: a server-side
- * redirect leaves redirectCount > 0, and a client-side one leaves the navigation entry's URL at
- * `/` while location has already moved on. Reloads and back/forward are not fresh entries and
- * are governed by the records the tab already holds.
+ * Home intent, decided once per tab. Entering through `/` — typed, bookmarked, linked — is the
+ * one entry that means "take me to the home screen", and the terminal IS the home screen, so
+ * that entry's landing page gets marked. A server-side redirect leaves redirectCount > 0; a
+ * client-side one leaves the navigation entry's URL at `/`. Any other first URL (a right-clicked
+ * card opened in a new tab, a pasted coin link, a shared profile) is a request for that exact
+ * page, and away-by-default already honours it. Reloads and back/forward are not fresh entries —
+ * the marks the tab already holds govern those.
  */
-function recordDeliberateEntry(): void {
-  const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
-  if (!entry || entry.type !== 'navigate' || entry.redirectCount > 0) return
+let pendingHomeMark = false
 
-  let entryPath: string
+function recordEntryIntent(): void {
+  const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
+  if (!entry || entry.type !== 'navigate') return
+
+  let entryPath: string | null
   try {
     entryPath = new URL(entry.name).pathname
   } catch {
-    return
+    entryPath = null
   }
-  if (entryPath !== window.location.pathname || !COIN_PATH.test(entryPath)) return
-  rememberHandoff(entryPath)
+  if (entry.redirectCount === 0 && entryPath !== '/' && entryPath !== '') return
+
+  if (window.location.pathname === '/') {
+    // Still on `/` mid-boot: mark it (so the terminal can mount immediately once logged-in
+    // state appears) and let the route watcher carry the mark to the redirect's landing page.
+    pendingHomeMark = true
+    markTerminal('/')
+  } else {
+    markTerminal(window.location.pathname)
+  }
 }
 
-recordDeliberateEntry()
+recordEntryIntent()
 watchRoute()
 void sync()
 if (isMarketingPage()) waitForSession()
