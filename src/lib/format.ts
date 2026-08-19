@@ -1,0 +1,44 @@
+/** Display formatting. Kept dumb and pure so it is easy to eyeball against fomo's own rendering. */
+
+const COMPACT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
+
+/** $1.2M / $860.4K / $12 */
+export function usd(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  if (value === 0) return '$0'
+  if (Math.abs(value) < 0.01) return `$${value.toPrecision(3)}`
+  return `$${COMPACT.format(value)}`
+}
+
+/** Plain compact count: 1.2K */
+export function count(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return COMPACT.format(value)
+}
+
+/**
+ * fomo reports change as a fraction (0.05 === +5%).
+ * Mobula reports it already multiplied. Callers normalise before calling this.
+ */
+export function percent(value: number | undefined, digits = 1): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(digits)}%`
+}
+
+/** Compact age from a unix-seconds timestamp: 12s / 4m / 3h / 2d */
+export function age(createdAtSeconds: number | undefined, now = Date.now()): string {
+  if (createdAtSeconds === undefined || !Number.isFinite(createdAtSeconds)) return '—'
+  const seconds = Math.max(0, Math.floor(now / 1000 - createdAtSeconds))
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
+/** Truncated contract address: 7xKX…mNa2 */
+export function shortAddress(address: string): string {
+  return address.length <= 12 ? address : `${address.slice(0, 4)}…${address.slice(-4)}`
+}

@@ -1,0 +1,159 @@
+/**
+ * Client for fomo's own token-list WebSocket.
+ *
+ * Why we connect ourselves rather than observe fomo's socket: fomo subscribes to exactly
+ * one list at a time — whichever tab its side panel has open. Verified live: switching to
+ * Bonding stopped `trending_tokens` at 12 frames while `pre_graduated_tokens` climbed past
+ * 100. Passive mirroring can therefore only ever fill one column, never three.
+ *
+ * So we open one connection and subscribe to all three topics. Same endpoint, same data,
+ * same ordering as fomo — we are simply a second client of the user's own session.
+ *
+ * Protocol, read out of fomo's bundle and confirmed against live frames:
+ *   server {type:"challenge"}          -> we {type:"challengeResponse", jwt}
+ *   server {type:"challengeAccepted"}  -> we {type:"subscribe", topicType, topicId}
+ *   server {type:"data", topicType, topicId, payload:{kind,...}}
+ *
+ * The JWT is read from the page's own localStorage at connect time, sent only to fomo's
+ * own API, held in a local variable, and never persisted or logged.
+ */
+
+import { TOPIC_TO_LIST, type ListDiff, type ListKey } from '~/lib/protocol'
+
+const WS_URL = 'wss://prod-api.fomo.family/ws'
+
+/**
+ * The chain set fomo subscribes with. Observed live as the topicId on real frames; fomo
+ * builds it from its own supported-chain list (Ethereum appears only behind a feature gate).
+ */
+const TOPIC_ID = '1,56,143,4663,8453,1399811149'
+
+const TOPICS = Object.keys(TOPIC_TO_LIST)
+
+export type SocketStatus = 'connecting' | 'authenticated' | 'closed' | 'unauthenticated'
+
+export interface FomoSocketHandlers {
+  onDiff: (list: ListKey, diff: ListDiff) => void
+  onStatus: (status: SocketStatus) => void
+}
+
+/** Read the page's Privy access token. Stored JSON-stringified by fomo's own storage layer. */
+function readJwt(): string | null {
+  try {
+    const raw = window.localStorage.getItem('privy:token')
+    if (!raw) return null
+    const parsed: unknown = raw.startsWith('"') ? JSON.parse(raw) : raw
+    return typeof parsed === 'string' && parsed.length > 0 ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function createFomoSocket({ onDiff, onStatus }: FomoSocketHandlers): () => void {
+  let socket: WebSocket | null = null
+  let closed = false
+  let attempt = 0
+  let retryTimer: number | undefined
+
+  function scheduleRetry(): void {
+    if (closed) return
+    attempt += 1
+    // Same shape as fomo's own reconnect policy: exponential, capped at 30s.
+    const delay = Math.min(1000 * 2 ** Math.min(attempt, 5), 30_000)
+    retryTimer = window.setTimeout(connect, delay)
+  }
+
+  function connect(): void {
+    if (closed) return
+
+    const jwt = readJwt()
+    if (!jwt) {
+      onStatus('unauthenticated')
+      scheduleRetry()
+      return
+    }
+
+    onStatus('connecting')
+
+    try {
+      socket = new WebSocket(WS_URL)
+    } catch {
+      scheduleRetry()
+      return
+    }
+
+    socket.addEventListener('message', (event: MessageEvent) => {
+      if (typeof event.data !== 'string') return
+
+      let frame: Record<string, unknown>
+      try {
+        frame = JSON.parse(event.data) as Record<string, unknown>
+      } catch {
+        return
+      }
+
+      switch (frame.type) {
+        case 'challenge': {
+          socket?.send(JSON.stringify({ type: 'challengeResponse', jwt }))
+          return
+        }
+
+        case 'challengeAccepted': {
+          attempt = 0
+          onStatus('authenticated')
+          for (const topicType of TOPICS) {
+            socket?.send(JSON.stringify({ type: 'subscribe', topicType, topicId: TOPIC_ID }))
+          }
+          return
+        }
+
+        case 'data': {
+          const topicType = frame.topicType
+          if (typeof topicType !== 'string') return
+          const list = TOPIC_TO_LIST[topicType]
+          if (!list) return
+
+          const payload = frame.payload
+          if (typeof payload !== 'object' || payload === null) return
+          const kind = (payload as { kind?: unknown }).kind
+          if (kind !== 'snapshot' && kind !== 'new' && kind !== 'update' && kind !== 'remove') return
+
+          onDiff(list, payload as ListDiff)
+          return
+        }
+
+        case 'error': {
+          // Surfaced by the server for a bad subscription or an expired token; the reconnect
+          // path re-reads the JWT, so just let the socket close naturally.
+          return
+        }
+
+        default:
+          return
+      }
+    })
+
+    socket.addEventListener('close', () => {
+      onStatus('closed')
+      socket = null
+      scheduleRetry()
+    })
+
+    socket.addEventListener('error', () => {
+      // 'close' always follows; retry is scheduled there.
+    })
+  }
+
+  connect()
+
+  return () => {
+    closed = true
+    if (retryTimer !== undefined) window.clearTimeout(retryTimer)
+    try {
+      socket?.close()
+    } catch {
+      /* already gone */
+    }
+    socket = null
+  }
+}
