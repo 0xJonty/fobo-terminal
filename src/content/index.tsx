@@ -41,6 +41,19 @@ const TERMINAL_KEY = 'fobo:terminal-paths'
 const PARKED_PATH = '/fobo-terminal'
 const TERMINAL_TITLE = 'fobo terminal'
 
+/**
+ * fomo's home routes. `/` is the entry; `/token` is the shim its header logo actually links
+ * to (verified live: the logo is `<a href="/token">`, and pushing `/token` redirects to the
+ * autoload coin page in under 200ms). Both are transit, never destinations: the home intent
+ * must not be spent on them, the URL mask must not rewrite their history entries, and a
+ * click on a link to either is a home-screen request.
+ */
+const HOME_PATHS: ReadonlySet<string> = new Set(['/', '/token'])
+
+function isHomePath(path: string): boolean {
+  return HOME_PATHS.has(path)
+}
+
 /** Bounded so a long session cannot grow this without limit. */
 const MARK_LIMIT = 20
 
@@ -236,7 +249,9 @@ let maskedPath: string | null = null
  * replace it anyway.
  */
 function maskUrl(): void {
-  if (window.location.pathname === PARKED_PATH || window.location.pathname === '/') return
+  // Never masks a home path — fomo's redirect is about to replace it, and rewriting a
+  // transit entry to fobo's address 404s fomo when Back later passes through it.
+  if (window.location.pathname === PARKED_PATH || isHomePath(window.location.pathname)) return
   const real = window.location.pathname + window.location.search + window.location.hash
   try {
     window.history.replaceState(null, '', PARKED_PATH)
@@ -531,7 +546,7 @@ async function sync(): Promise<void> {
     // masked entry 404s fomo when Back passes through it). The route watcher re-runs sync
     // once the path stops moving, so neither the deferred clear nor the mask is lost.
     const settled = routeSettled()
-    if (settled && window.location.pathname !== '/') setPendingHome(false)
+    if (settled && !isHomePath(window.location.pathname)) setPendingHome(false)
     maskTitle()
     if (settled) maskUrl()
     return
@@ -579,14 +594,14 @@ function watchRoute(): void {
       // intent claims the current page from here; sync's mount branch then clears it.
       // Not while the terminal is visible (nothing to claim) and not on `/` itself —
       // the redirect off `/` always produces a real path change for the branch below.
-      if (path !== '/' && isPendingHome() && !(host && host.dataset.foboHidden === undefined)) {
+      if (!isHomePath(path) && isPendingHome() && !(host && host.dataset.foboHidden === undefined)) {
         markTerminal(path)
         void sync()
       } else if (
         host &&
         host.dataset.foboHidden === undefined &&
         maskedPath === null &&
-        path !== '/' &&
+        !isHomePath(path) &&
         routeSettled()
       ) {
         // The mount ran before the route settled, so spending the intent and masking the
@@ -599,23 +614,27 @@ function watchRoute(): void {
     }
     lastPathChangeAt = Date.now()
     // While the home intent is armed, every automatic landing is still "the home screen" —
-    // fomo can hop more than once (`/coin` shim, address canonicalisation) before settling.
-    if (isPendingHome()) markTerminal(path)
-    // Returning to a marked `/` (Back past the landing page) renews the home intent. fomo
-    // immediately redirects off `/` again — and if the #1 trending token rotated since entry,
-    // it lands on a DIFFERENT token page than the one marked at boot. Without re-arming, that
-    // landing page is unmarked and the user is stranded on a bare fomo page where the terminal
-    // used to be. `/` is only ever marked by home intent, so this cannot widen the mount set.
-    if (path === '/' && isTerminalPath('/')) setPendingHome(true)
+    // fomo can hop more than once (the `/token` shim, address canonicalisation) before
+    // settling. Home paths themselves are transit, not destinations: marking one would make
+    // it "always mountable" and fight fomo's redirect off it.
+    if (isPendingHome() && !isHomePath(path)) markTerminal(path)
+    // Landing on a home path (Back past the landing page, or fomo's own redirect passing
+    // through) renews the home intent: fomo immediately redirects off it again, and if the
+    // autoload token rotated since entry it lands on a DIFFERENT page than the one marked
+    // at boot. Without re-arming, that landing is unmarked and the user is stranded.
+    // `/token` re-arms unconditionally — it is pure transit, reachable only home-ward
+    // (the logo link is intercepted before it navigates). `/` stays gated on its mark:
+    // it is only marked by home intent, so this cannot widen the mount set.
+    if (path === '/token' || (path === '/' && isTerminalPath('/'))) setPendingHome(true)
     lastPath = path
     void sync()
   }
   window.addEventListener('popstate', check)
   window.addEventListener('hashchange', check)
   window.addEventListener('pageshow', () => {
-    // A bfcache restore re-runs nothing, so the same `/` re-entry case is handled here too.
+    // A bfcache restore re-runs nothing, so the same home re-entry case is handled here too.
     lastPath = window.location.pathname
-    if (lastPath === '/' && isTerminalPath('/')) setPendingHome(true)
+    if (lastPath === '/token' || (lastPath === '/' && isTerminalPath('/'))) setPendingHome(true)
     void sync()
   })
   window.setInterval(check, 300)
@@ -731,16 +750,16 @@ function recordEntryIntent(): void {
   let cameFromRoot = false
   try {
     const ref = document.referrer ? new URL(document.referrer) : null
-    cameFromRoot = ref !== null && ref.origin === window.location.origin && ref.pathname === '/'
+    cameFromRoot = ref !== null && ref.origin === window.location.origin && isHomePath(ref.pathname)
   } catch {
     cameFromRoot = false
   }
 
   const isHomeEntry =
     (entry && entry.redirectCount > 0) ||
-    entryPath === '/' ||
     entryPath === '' ||
     entryPath === PARKED_PATH ||
+    (entryPath !== null && isHomePath(entryPath)) ||
     cameFromRoot
 
   if (!isHomeEntry) {
@@ -797,7 +816,7 @@ window.addEventListener(
     } catch {
       return
     }
-    if (url.origin !== window.location.origin || url.pathname !== '/') return
+    if (url.origin !== window.location.origin || !isHomePath(url.pathname)) return
     event.preventDefault()
     event.stopPropagation()
     // An explicit summon, same as the launcher: clear any dismissal and claim this page.

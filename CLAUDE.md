@@ -90,7 +90,12 @@ branch that suppressed the mount. No line at all means the content script never 
   (`fobo:terminal-paths`) — the `/` entry's landing page, an explicit summon, or Back onto one.
   Everything else (profiles, coin pages, fomo-internal links) belongs to fomo. Do not regress to
   mount-everywhere; that covered pages the user had just navigated to.
-- Home clicks are INTERCEPTED (capture-phase; the logo is a plain same-origin `<a href="/">`):
+- fomo's home routes are `/` AND `/token` — the header logo is `<a href="/token">`, and
+  `/token` redirects to the autoload coin page in <200ms (verified live; an in-app popstate
+  to bare `/` does NOT redirect). `HOME_PATHS` in content/index.tsx is the single source of
+  truth; beware `a.href` on an href-less anchor resolving to "" -> pathname `/` (false home
+  positives — always check getAttribute).
+- Home clicks are INTERCEPTED (capture-phase; match against HOME_PATHS, not `/` alone):
   preventDefault + summon the terminal over the current page. Never chase fomo's `/` redirect —
   it resolves inside one 300ms poll tick, hops through transit paths (a bare `/token`, observed
   live), and can land on the very page it left. Anything that must happen once per DESTINATION
