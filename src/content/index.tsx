@@ -31,6 +31,14 @@ const DISMISSED_KEY = 'fobo:dismissed'
  */
 const TERMINAL_KEY = 'fobo:terminal-paths'
 
+/**
+ * fobo's own address. After a home-intent mount the URL underneath is moved here, so fomo swaps
+ * the landing token page for its lightweight 404 view instead of streaming a chart nobody can
+ * see behind the overlay. fomo serves its app shell for any unknown path (verified against
+ * prod), so reloads and bookmarks of this path boot the session layer normally.
+ */
+const PARKED_PATH = '/fobo-terminal'
+
 /** Bounded so a long session cannot grow this without limit. */
 const MARK_LIMIT = 20
 
@@ -64,6 +72,9 @@ function unmarkTerminal(path: string): void {
 }
 
 function isTerminalPath(path: string): boolean {
+  // The reserved path IS the terminal — fomo has nothing there — so it stays mountable
+  // forever: bookmarking fomo.family/fobo-terminal opens straight into fobo.
+  if (path === PARKED_PATH) return true
   return readMarks().includes(path)
 }
 
@@ -244,14 +255,49 @@ function dismiss(): void {
  * page below, step out of the way, and click it. If fomo's header is not there (or renamed),
  * nothing happens rather than something invented.
  */
-function requestDeposit(): void {
+function findDepositButton(): HTMLButtonElement | null {
   for (const button of document.querySelectorAll<HTMLButtonElement>('button')) {
     if (button.textContent?.trim() !== 'Deposit more') continue
     if (button.closest(`#${HOST_ID}`)) continue
+    return button
+  }
+  return null
+}
+
+const DEPOSIT_POLL_MS = 250
+const DEPOSIT_POLL_LIMIT = 32
+
+function requestDeposit(): void {
+  const direct = findDepositButton()
+  if (direct) {
     dismiss()
-    button.click()
+    direct.click()
     return
   }
+  // Parked: fomo's 404 view under the terminal has no header, so the real button is not in
+  // the page. Drive fomo home — its `/` redirect boots a real page with the real header —
+  // then click the button once it renders. Dismissal comes first, so the landing page cannot
+  // remount the terminal over the deposit modal.
+  dismiss()
+  try {
+    window.history.pushState(null, '', '/')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  } catch {
+    window.location.assign('/')
+    return
+  }
+  lastPath = window.location.pathname
+  let tries = 0
+  const timer = window.setInterval(() => {
+    tries += 1
+    const button = findDepositButton()
+    if (button) {
+      window.clearInterval(timer)
+      button.click()
+      return
+    }
+    if (tries >= DEPOSIT_POLL_LIMIT) window.clearInterval(timer)
+  }, DEPOSIT_POLL_MS)
 }
 
 function render(): void {
@@ -317,6 +363,28 @@ function navigate(href: string): void {
   void sync()
 }
 
+/**
+ * Move the URL under the mounted terminal to fobo's reserved path. fomo's router follows the
+ * synthetic popstate and swaps the landing token page for its 404 view — measured live: ~5.9k
+ * DOM nodes, two iframes and the TradingView chart down to ~66 nodes. replaceState, not
+ * pushState: the landing page leaves history entirely, so Back walks from the terminal to
+ * wherever the user came from, and a coin-click-then-Back returns here warm.
+ *
+ * Only home-intent mounts park. A summoned terminal (launcher, toolbar toggle) sits over a
+ * page the user chose — replacing that page's URL would strand Esc on a 404.
+ */
+function park(): void {
+  if (window.location.pathname === PARKED_PATH) return
+  try {
+    window.history.replaceState(null, '', PARKED_PATH)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  } catch {
+    return
+  }
+  markTerminal(PARKED_PATH)
+  lastPath = PARKED_PATH
+}
+
 /** Why fobo is or is not on screen. Surfaced so a mount failure is diagnosable from the console. */
 type Decision = 'mount' | 'marketing' | 'disabled' | 'dismissed' | 'away'
 
@@ -339,10 +407,18 @@ async function sync(): Promise<void> {
   }
 
   if (decision === 'mount') {
-    // The intent is fulfilled: stop following redirects, this is the home screen now.
-    setPendingHome(false)
     removeLauncher()
     render()
+    // Parking waits until fomo has left `/`: its router is still resolving the home redirect
+    // there, and swapping the URL mid-hydration risks a fight with it. The intent stays armed
+    // meanwhile — the redirect's landing page gets marked and this branch runs again. (This
+    // also fixes a bug where a mount that happened while still on `/` consumed the intent, so
+    // the redirect landed on an unmarked page and the terminal vanished.)
+    if (window.location.pathname !== '/') {
+      const fromHomeIntent = isPendingHome()
+      setPendingHome(false)
+      if (fromHomeIntent) park()
+    }
     return
   }
 
@@ -507,7 +583,11 @@ function recordEntryIntent(): void {
   }
 
   const isHomeEntry =
-    (entry && entry.redirectCount > 0) || entryPath === '/' || entryPath === '' || cameFromRoot
+    (entry && entry.redirectCount > 0) ||
+    entryPath === '/' ||
+    entryPath === '' ||
+    entryPath === PARKED_PATH ||
+    cameFromRoot
 
   if (!isHomeEntry) {
     // A fresh navigation to a specific page is a request for that page: clear any stale intent
@@ -524,9 +604,17 @@ function recordEntryIntent(): void {
 
 // The user touching the page means every navigation from here on is theirs — the intent must
 // not mount the terminal over a page they clicked to. Capture phase, so no handler below can
-// swallow it. Once the terminal has mounted the flag is already spent, and the launcher's own
-// click handler re-marks explicitly, so this can only ever narrow the mount set.
-window.addEventListener('pointerdown', () => setPendingHome(false), { capture: true })
+// swallow it. A visible terminal is the exception: those clicks are IN the terminal, and
+// mid-boot on `/` the intent is still armed waiting for fomo's redirect to land — killing it
+// there made the terminal vanish out from under the user's first click.
+window.addEventListener(
+  'pointerdown',
+  () => {
+    if (host && host.dataset.foboHidden === undefined) return
+    setPendingHome(false)
+  },
+  { capture: true },
+)
 
 recordEntryIntent()
 watchRoute()

@@ -74,6 +74,12 @@ branch that suppressed the mount. No line at all means the content script never 
   (`fobo:terminal-paths`) — the `/` entry's landing page, an explicit summon, or Back onto one.
   Everything else (profiles, coin pages, fomo-internal links) belongs to fomo. Do not regress to
   mount-everywhere; that covered pages the user had just navigated to.
+- Home-intent mounts then park: the URL under the terminal is replaceState'd to `/fobo-terminal`
+  (always mountable, bookmarkable), where fomo renders its lightweight 404 view — the landing
+  token page's chart and subscriptions tear down (~5.9k DOM nodes → ~66, measured live). fomo
+  serves its app shell for any unknown path, so reloads there boot the session normally. The 404
+  view has no header, so the deposit flow drives fomo to `/` first and clicks the real button
+  when it renders. Summoned mounts never park — that would strand Esc on a 404.
 
 ## Git
 

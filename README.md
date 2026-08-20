@@ -28,6 +28,8 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Bottom bar: fomo's own footer recreated one-to-one — majors, watchlist ticker, status dot
 - [x] Holdings bar: the account's open positions under the top bar, Axiom-style chips
 - [x] Chain identifiers on column cards, using fomo's own chain glyph tiles
+- [x] Parked path: the terminal lives at fomo.family/fobo-terminal — fomo's heavy landing
+      token page tears down underneath instead of streaming behind the overlay
 - [ ] Manual verification in Chrome
 - [ ] Per-column filters and sort
 - [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)
