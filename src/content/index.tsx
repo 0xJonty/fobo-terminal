@@ -99,11 +99,22 @@ function extensionAlive(): boolean {
   }
 }
 
-/** Enabled unless storage explicitly says otherwise. An orphaned context reads as enabled. */
+/**
+ * Enabled unless storage explicitly says otherwise. An orphaned context reads as enabled.
+ *
+ * The read is raced against a timeout: chrome.storage.sync.get from a context that is being
+ * invalidated can neither resolve nor reject, and one hung await here silently stalled sync()
+ * forever — no mount, no launcher, not even the decision line in the console.
+ */
 async function readEnabled(): Promise<boolean> {
   if (!extensionAlive()) return true
   try {
-    const stored = await chrome.storage.sync.get(ENABLED_KEY)
+    const stored = await Promise.race([
+      chrome.storage.sync.get(ENABLED_KEY),
+      new Promise<Record<string, unknown>>((resolve) =>
+        window.setTimeout(() => resolve({}), 1000),
+      ),
+    ])
     return stored[ENABLED_KEY] !== false
   } catch {
     return true
@@ -328,6 +339,8 @@ async function sync(): Promise<void> {
   }
 
   if (decision === 'mount') {
+    // The intent is fulfilled: stop following redirects, this is the home screen now.
+    setPendingHome(false)
     removeLauncher()
     render()
     return
@@ -355,17 +368,15 @@ function watchRoute(): void {
   const check = () => {
     const path = window.location.pathname
     if (path === lastPath) return
-    if (pendingHomeMark && lastPath === '/') {
-      // fomo's redirect off `/` just fired: the home intent follows it to wherever it landed.
-      markTerminal(path)
-      pendingHomeMark = false
-    }
+    // While the home intent is armed, every automatic landing is still "the home screen" —
+    // fomo can hop more than once (`/coin` shim, address canonicalisation) before settling.
+    if (isPendingHome()) markTerminal(path)
     // Returning to a marked `/` (Back past the landing page) renews the home intent. fomo
     // immediately redirects off `/` again — and if the #1 trending token rotated since entry,
     // it lands on a DIFFERENT token page than the one marked at boot. Without re-arming, that
     // landing page is unmarked and the user is stranded on a bare fomo page where the terminal
     // used to be. `/` is only ever marked by home intent, so this cannot widen the mount set.
-    if (path === '/' && isTerminalPath('/')) pendingHomeMark = true
+    if (path === '/' && isTerminalPath('/')) setPendingHome(true)
     lastPath = path
     void sync()
   }
@@ -374,7 +385,7 @@ function watchRoute(): void {
   window.addEventListener('pageshow', () => {
     // A bfcache restore re-runs nothing, so the same `/` re-entry case is handled here too.
     lastPath = window.location.pathname
-    if (lastPath === '/' && isTerminalPath('/')) pendingHomeMark = true
+    if (lastPath === '/' && isTerminalPath('/')) setPendingHome(true)
     void sync()
   })
   window.setInterval(check, 300)
@@ -419,37 +430,103 @@ try {
 }
 
 /**
- * Home intent, decided once per tab. Entering through `/` — typed, bookmarked, linked — is the
- * one entry that means "take me to the home screen", and the terminal IS the home screen, so
- * that entry's landing page gets marked. A server-side redirect leaves redirectCount > 0; a
- * client-side one leaves the navigation entry's URL at `/`. Any other first URL (a right-clicked
- * card opened in a new tab, a pasted coin link, a shared profile) is a request for that exact
- * page, and away-by-default already honours it. Reloads and back/forward are not fresh entries —
- * the marks the tab already holds govern those.
+ * Home intent. Entering through `/` — typed, bookmarked, linked — is the one entry that means
+ * "take me to the home screen", and the terminal IS the home screen, so the entry's landing page
+ * gets marked. A server-side redirect leaves redirectCount > 0; a client-side one leaves the
+ * navigation entry's URL at `/`. Any other first URL (a right-clicked card opened in a new tab,
+ * a pasted coin link, a shared profile) is a request for that exact page, and away-by-default
+ * already honours it. Reloads and back/forward are not fresh entries — the marks the tab
+ * already holds govern those.
+ *
+ * The intent used to be a module boolean consumed on the first path change. Two observed fomo
+ * behaviours broke that: it sometimes redirects MORE than once before settling (the `/coin`
+ * shim, address canonicalisation), and its root error boundary recovers a failed chunk load
+ * with a full location.replace — which destroys the document and the boolean with it. Either
+ * way the final landing page had no mark, the terminal never appeared, and only a toolbar
+ * toggle (which marks the current path) brought it back. So the intent now lives in
+ * sessionStorage with a short TTL and keeps marking every automatic landing until the terminal
+ * actually mounts. It is cleared by the mount itself, by the user touching the page (their
+ * navigations are their own), or by the TTL running out.
  */
-let pendingHomeMark = false
+const PENDING_HOME_KEY = 'fobo:pending-home'
+const PENDING_HOME_TTL_MS = 15_000
+
+/** In-memory fallback so private mode degrades to the old single-document behaviour. */
+let pendingHomeMemory = false
+
+function setPendingHome(value: boolean): void {
+  pendingHomeMemory = value
+  try {
+    if (value) window.sessionStorage.setItem(PENDING_HOME_KEY, String(Date.now()))
+    else window.sessionStorage.removeItem(PENDING_HOME_KEY)
+  } catch {
+    /* private mode — pendingHomeMemory carries it */
+  }
+}
+
+function isPendingHome(): boolean {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_HOME_KEY)
+    if (!raw) return pendingHomeMemory
+    const startedAt = Number(raw)
+    if (!Number.isFinite(startedAt) || Date.now() - startedAt > PENDING_HOME_TTL_MS) {
+      setPendingHome(false)
+      return false
+    }
+    return true
+  } catch {
+    return pendingHomeMemory
+  }
+}
 
 function recordEntryIntent(): void {
   const [entry] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
-  if (!entry || entry.type !== 'navigate') return
 
-  let entryPath: string | null
+  // Reload / back-forward re-runs keep whatever intent and marks the tab already holds — a
+  // mid-boot full reload (fomo's chunk-reload recovery) must not strip an in-flight intent.
+  if (entry && entry.type !== 'navigate') return
+
+  let entryPath: string | null = null
+  if (entry) {
+    try {
+      entryPath = new URL(entry.name).pathname
+    } catch {
+      entryPath = null
+    }
+  }
+
+  // Fallback when the navigation entry is missing or names a deep URL: a same-origin referrer
+  // of `/` means this document was reached by fomo redirecting off the home page — the only
+  // full-page navigation that starts there — so the home intent survives that hop too.
+  let cameFromRoot = false
   try {
-    entryPath = new URL(entry.name).pathname
+    const ref = document.referrer ? new URL(document.referrer) : null
+    cameFromRoot = ref !== null && ref.origin === window.location.origin && ref.pathname === '/'
   } catch {
-    entryPath = null
+    cameFromRoot = false
   }
-  if (entry.redirectCount === 0 && entryPath !== '/' && entryPath !== '') return
 
-  if (window.location.pathname === '/') {
-    // Still on `/` mid-boot: mark it (so the terminal can mount immediately once logged-in
-    // state appears) and let the route watcher carry the mark to the redirect's landing page.
-    pendingHomeMark = true
-    markTerminal('/')
-  } else {
-    markTerminal(window.location.pathname)
+  const isHomeEntry =
+    (entry && entry.redirectCount > 0) || entryPath === '/' || entryPath === '' || cameFromRoot
+
+  if (!isHomeEntry) {
+    // A fresh navigation to a specific page is a request for that page: clear any stale intent
+    // left by an earlier entry so it cannot mount the terminal over it.
+    if (entry) setPendingHome(false)
+    return
   }
+
+  // Mark where we stand and keep the intent armed — if fomo redirects (again), the route
+  // watcher carries the mark along until the terminal is actually on screen.
+  setPendingHome(true)
+  markTerminal(window.location.pathname)
 }
+
+// The user touching the page means every navigation from here on is theirs — the intent must
+// not mount the terminal over a page they clicked to. Capture phase, so no handler below can
+// swallow it. Once the terminal has mounted the flag is already spent, and the launcher's own
+// click handler re-marks explicitly, so this can only ever narrow the mount set.
+window.addEventListener('pointerdown', () => setPendingHome(false), { capture: true })
 
 recordEntryIntent()
 watchRoute()
