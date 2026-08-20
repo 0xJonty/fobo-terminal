@@ -334,3 +334,100 @@ export async function searchTokens(query: string): Promise<Token[]> {
   }
   return tokens
 }
+
+/* ---------- watchlist + majors ticker (fomo's bottom bar) ---------- */
+
+export interface WatchlistEntry {
+  networkId: number
+  tokenAddress: string
+  /** ISO string. fomo sorts the ticker newest-watched first. */
+  createdAt: string
+}
+
+/** GET /watchlist — the ids of every token the user has starred, verified live. */
+export async function watchlist(): Promise<WatchlistEntry[] | null> {
+  const raw = await call<{ watchlist?: unknown[] }>('/watchlist')
+  if (!raw || !Array.isArray(raw.watchlist)) return null
+
+  const entries: WatchlistEntry[] = []
+  for (const item of raw.watchlist) {
+    if (typeof item !== 'object' || item === null) continue
+    const row = item as { networkId?: unknown; tokenAddress?: unknown; createdAt?: unknown }
+    if (typeof row.networkId !== 'number' || typeof row.tokenAddress !== 'string') continue
+    entries.push({
+      networkId: row.networkId,
+      tokenAddress: row.tokenAddress,
+      createdAt: typeof row.createdAt === 'string' ? row.createdAt : '',
+    })
+  }
+  return entries
+}
+
+/** DELETE /watchlist — un-star one token, exactly as fomo's own star button does. */
+export async function watchlistRemove(networkId: number, tokenAddress: string): Promise<boolean> {
+  const result = await call<unknown>('/watchlist', {
+    method: 'DELETE',
+    body: JSON.stringify({ networkId, tokenAddress }),
+  })
+  return result !== null
+}
+
+/**
+ * POST /proxy/filterTokens — batch token data by `${address}:${networkId}` ids. This is the
+ * call fomo's bottom bar makes for both the majors and the watchlist row (its own client
+ * batches at 100 per request; the ticker never needs more than ~20).
+ */
+export async function filterTokens(ids: string[]): Promise<Token[]> {
+  if (ids.length === 0) return []
+  const rows = await call<unknown[]>('/proxy/filterTokens', {
+    method: 'POST',
+    body: JSON.stringify(ids),
+  })
+  if (!Array.isArray(rows)) return []
+
+  const tokens: Token[] = []
+  for (const raw of rows) {
+    const token = fromFomoRow(raw)
+    if (token) tokens.push(token)
+  }
+  return tokens
+}
+
+/* ---------- app status (status.fomo.family) ---------- */
+
+export type StatusSeverity = 'STABLE' | 'MODERATE' | 'SEVERE'
+
+export interface AppStatus {
+  statusSeverity: StatusSeverity
+  statusMessage?: string
+  statusDescription?: string
+}
+
+/**
+ * GET https://status.fomo.family/prod — public, unauthenticated, same envelope. fomo's footer
+ * polls it every 5 minutes for the little status dot.
+ */
+export async function appStatus(): Promise<AppStatus | null> {
+  let response: Response
+  try {
+    response = await fetch('https://status.fomo.family/prod')
+  } catch {
+    return null
+  }
+  if (!response.ok) return null
+
+  try {
+    const body = (await response.json()) as Envelope<Record<string, unknown>>
+    const raw = body.responseObject
+    const severity = raw?.statusSeverity
+    if (severity !== 'STABLE' && severity !== 'MODERATE' && severity !== 'SEVERE') return null
+    return {
+      statusSeverity: severity,
+      statusMessage: typeof raw?.statusMessage === 'string' ? raw.statusMessage : undefined,
+      statusDescription:
+        typeof raw?.statusDescription === 'string' ? raw.statusDescription : undefined,
+    }
+  } catch {
+    return null
+  }
+}

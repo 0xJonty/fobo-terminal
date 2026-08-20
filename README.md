@@ -25,6 +25,7 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Three virtualised columns, Axiom-style cards, shadow-DOM isolation
 - [x] Alerts panel: fomo's followed-traders activity feed beside the columns, side and width
       configurable from the toolbar popup
+- [x] Bottom bar: fomo's own footer recreated one-to-one — majors, watchlist ticker, status dot
 - [ ] Manual verification in Chrome
 - [ ] Per-column filters and sort
 - [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)
@@ -50,6 +51,15 @@ back; clicking a row opens the token, clicking a trader opens their profile.
 The toolbar popup controls it: on/off, left or right side (default right), and width
 (280–480 px). Rows on chains fobo cannot name are dropped rather than mislabelled, and a row
 only ever shows fields the feed actually carried.
+
+### Bottom bar
+
+fomo's own footer, recreated one-to-one inside the terminal: BTC/ETH/SOL/HYPE prices on the
+left, then your watchlist as a drag-scrollable ticker (newest-starred first, capped at 15, market
+cap under $10B shown as MC, otherwise price — fomo's own display rule), and on the right the
+status dot (`status.fomo.family`), Privacy/Terms/Help, and the X/Discord icons. Prices refresh
+every minute and status every five, matching fomo's intervals. The star beside a watchlist entry
+un-stars it via the same `DELETE /watchlist` call fomo makes.
 
 ### Scope limits
 

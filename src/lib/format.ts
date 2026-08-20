@@ -64,3 +64,30 @@ export function age(createdAtSeconds: number | undefined, now = Date.now()): str
 export function shortAddress(address: string): string {
   return address.length <= 12 ? address : `${address.slice(0, 4)}…${address.slice(-4)}`
 }
+
+/**
+ * fomo's own price formatter, mirrored from its bundle (chains chunk: `formatPrice` and its
+ * precision helper): >= $1 gets two decimals with thousands grouping; below $1 the decimal
+ * count follows the leading zeros so three significant digits survive. The bottom bar renders
+ * majors with this.
+ */
+export function tickerPrice(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '$0'
+  const abs = Math.abs(value)
+  let digits: number
+  if (value === 0) {
+    digits = 0
+  } else if (abs >= 1) {
+    digits = 2
+  } else {
+    const exponent = Number(abs.toExponential().split('e')[1])
+    digits = Math.min(100, Math.max(0, -exponent - 1) + 3)
+  }
+  const fixed = abs.toFixed(digits)
+  const dot = fixed.indexOf('.')
+  const whole = dot === -1 ? fixed : fixed.slice(0, dot)
+  const frac = dot === -1 ? '' : fixed.slice(dot + 1)
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const out = frac ? `${grouped}.${frac}` : grouped
+  return value < 0 ? `-$${out}` : `$${out}`
+}

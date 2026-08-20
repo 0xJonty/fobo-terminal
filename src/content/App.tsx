@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertsPanel } from '~/ui/AlertsPanel'
+import { BottomBar } from '~/ui/BottomBar'
 import { Column } from '~/ui/Column'
 import { TopBar } from '~/ui/TopBar'
 import { fetchAlertsPage, mergeAlerts, parseAlert, type AlertItem } from '~/lib/alerts'
@@ -233,6 +234,8 @@ export function App({
           ))}
         </div>
       </div>
+
+      <BottomBar onNavigate={onOpen} />
     </div>
   )
 }
