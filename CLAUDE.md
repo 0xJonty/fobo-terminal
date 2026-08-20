@@ -110,6 +110,22 @@ branch that suppressed the mount. No line at all means the content script never 
   resize is dispatched on restore. Do NOT resurrect URL parking (replaceState + synthetic
   popstate onto a reserved path): routing fomo onto its 404 view broke the alerts feed and
   flashed on every handoff — reverted after live use.
+- fomo REST wraps everything in {success, responseObject} — fomoCall unwraps; raw fetches
+  (opencli eval probes) must read .responseObject themselves.
+- More chunk homes: ClanWindowSelector-* = the side panel (alerts feed + filters, the /feed
+  social feed + its 8 filter groups, the alert-ding sound). Token id helper (chains chunk)
+  is `${address}:${networkId}` — same as our tokenKey.
+- Endpoints (verified live): GET /watchlist -> ids, then POST /proxy/filterTokens with a
+  JSON array of "address:networkId" ids -> rows in fomo's standard list-row shape
+  (fromFomoRow-compatible). GET /feed REQUIRES feedTypes params (400s without; groups
+  mirrored in src/lib/feed.ts). /feed/tradingActivity takes threshold / minEquity (only
+  when >0) / minMarketCap / maxMarketCap; fomo's stock threshold is 1000.
+- Header menus are Radix navigation-menu: triggers are
+  `nav[class*=navigation-menu] button[data-state]` ([0] cash, [1] profile); menu content
+  mounts only while open, and opening programmatically needs the full pointer sequence
+  (pointerenter/move/down/up/click). Modal-backed items are driven via requestHeaderMenu
+  in content/index.tsx — never recreated.
+- Alert sound: /sounds/alert-ding.mp3, 2s throttle, 10s freshness (replica: src/lib/sound.ts).
 - The visible terminal MASKS the tab instead: URL shown as `/fobo-terminal` and title as
   "fobo terminal" via bare replaceState / document.title with NO synthetic popstate, so fomo's
   router never notices and the real page stays live underneath. The mask lifts on every handoff
@@ -118,6 +134,17 @@ branch that suppressed the mount. No line at all means the content script never 
 
 ## Session tooling quirks (this machine)
 
+- Extension reloads cannot be automated (chrome:// blocked). Detect a reload with a
+  background Monitor polling a new-build marker class in the shadow root, then E2E.
+- Main-world injection harness (E2E extension code WITHOUT reloading the extension):
+  build the content script standalone (vite lib-mode IIFE; the config file must sit in
+  the project root or `import 'vite'` fails), base64 the bundle, transfer in <100KB
+  chunks (execve caps one argv at ~128KB), assemble in a window var, then inject via a
+  <script> carrying the PAGE's own nonce (fomo's CSP has script-src nonce, no
+  unsafe-eval; CDP top-level eval is CSP-exempt, nested eval is not). Collides with a
+  live extension instance (same host id) — only useful while the extension is off/stale.
+- A 432-chunk bundle mirror may persist at
+  /tmp/claude-1000/-home-jonty-build-fobo-terminal/804ada0e-*/scratchpad/chunks.
 - Emitted bundles write string literals as BACKTICK template literals (esbuild), so grepping
   dist for '"/token"' or single-quoted strings finds nothing — match the bare substring or
   backticks when verifying a build contains a change.
