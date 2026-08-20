@@ -118,6 +118,10 @@ branch that suppressed the mount. No line at all means the content script never 
 
 ## Session tooling quirks (this machine)
 
+- Emitted bundles write string literals as BACKTICK template literals (esbuild), so grepping
+  dist for '"/token"' or single-quoted strings finds nothing — match the bare substring or
+  backticks when verifying a build contains a change.
+
 - Output-compression hooks mangle multi-file grep results ("N matches in M files" interleaving)
   and piped opencli output sometimes emits a spurious "claude native binary not installed"
   error. Reliable pattern: redirect command output to a scratchpad file, then post-process with
