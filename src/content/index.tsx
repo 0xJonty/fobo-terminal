@@ -473,9 +473,20 @@ function navigate(href: string): void {
     return
   }
   // Restore the real URL first, so the destination stacks on a real history entry and Back
-  // returns to a real fomo page (which remounts the terminal and re-masks).
+  // returns to a real fomo page (which remounts the terminal and re-masks). Also restores
+  // the real pathname for the comparison below — while masked it reads as the parked path.
   unmaskUrl()
-  if (path !== window.location.pathname) unmarkTerminal(path)
+  // The destination can be the very page the terminal is sitting on: fomo's `/` redirect
+  // lands on a coin page, and the top holding (the holdings bar's first chip) tends to be
+  // that same coin. There is nothing to push and no popstate to raise — the real page below
+  // is already correct; stepping aside IS the navigation. Unmark so sync hides the terminal
+  // instead of holding the mount, which read as a dead click.
+  if (path === window.location.pathname) {
+    unmarkTerminal(path)
+    void sync()
+    return
+  }
+  unmarkTerminal(path)
   try {
     window.history.pushState(null, '', href)
     window.dispatchEvent(new PopStateEvent('popstate'))
