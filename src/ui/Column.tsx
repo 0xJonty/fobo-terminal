@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ColumnControls } from '~/ui/ColumnControls'
 import { filtersActive, type ColumnPrefs } from '~/lib/columnPrefs'
+import type { ListKey } from '~/lib/protocol'
 import { TokenCard } from '~/ui/TokenCard'
 import type { Token } from '~/types/token'
 
@@ -21,6 +22,7 @@ function Skeleton() {
 }
 
 export function Column({
+  list,
   title,
   tokens,
   total,
@@ -31,6 +33,7 @@ export function Column({
   onPrefsChange,
   onOpen,
 }: {
+  list: ListKey
   title: string
   tokens: Token[]
   /** Rows in fomo's store for this list, before our filters and the render cap. */
@@ -86,7 +89,7 @@ export function Column({
           {filtersActive(prefs) ? `${tokens.length}/${total}` : tokens.length}
         </span>
         {frozen && <span className="column-paused">paused</span>}
-        <ColumnControls prefs={prefs} onChange={onPrefsChange} />
+        <ColumnControls list={list} prefs={prefs} onChange={onPrefsChange} />
       </header>
 
       <div

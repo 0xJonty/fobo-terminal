@@ -266,6 +266,7 @@ export function App({
           {LIST_KEYS.map((key) => (
             <Column
               key={key}
+              list={key}
               title={LIST_LABEL[key]}
               tokens={enriched[key]}
               total={lists[key].length}

@@ -17,7 +17,13 @@ import type { Token } from '~/types/token'
 
 export const COLUMNS_KEY = 'fobo:columns'
 
-export type SortField = 'marketCap' | 'volume' | 'holders' | 'liquidity'
+/**
+ * Bumped when a change in meaning (not just shape) needs a migration on read — see
+ * sanitizeAllColumnPrefs. v1 had no version field.
+ */
+const STORAGE_VERSION = 2
+
+export type SortField = 'marketCap' | 'volume' | 'holders' | 'liquidity' | 'age'
 export type SortDir = 'desc' | 'asc'
 
 /** Raw user input, kept verbatim so the boxes round-trip exactly; '' means unset. */
@@ -55,11 +61,16 @@ export const FILTERABLE_CHAINS: readonly { networkId: number; label: string }[] 
 ]
 
 const FILTERABLE_IDS = new Set(FILTERABLE_CHAINS.map((chain) => chain.networkId))
-const SORT_FIELDS: readonly SortField[] = ['marketCap', 'volume', 'holders', 'liquidity']
+const SORT_FIELDS: readonly SortField[] = ['marketCap', 'volume', 'holders', 'liquidity', 'age']
 
-export function defaultPrefs(): ColumnPrefs {
+/**
+ * Graduated defaults to newest-first: fomo streams that list in its own order, and a fresh
+ * graduation is the event the column exists to surface. The user can still clear the sort
+ * (back to fomo's order) and that choice persists; Reset restores this default.
+ */
+export function defaultPrefs(list?: ListKey): ColumnPrefs {
   return {
-    sort: null,
+    sort: list === 'graduated' ? { field: 'age', dir: 'desc' } : null,
     chains: null,
     marketCap: { min: '', max: '' },
     liquidity: { min: '', max: '' },
@@ -71,9 +82,9 @@ export function defaultPrefs(): ColumnPrefs {
 
 export function defaultAllPrefs(): AllColumnPrefs {
   return {
-    'pre-graduated': defaultPrefs(),
-    graduated: defaultPrefs(),
-    trending: defaultPrefs(),
+    'pre-graduated': defaultPrefs('pre-graduated'),
+    graduated: defaultPrefs('graduated'),
+    trending: defaultPrefs('trending'),
   }
 }
 
@@ -138,6 +149,9 @@ const SORT_VALUE: Readonly<Record<SortField, (token: Token) => number | undefine
   volume: (token) => token.volume24 ?? token.metrics?.volume1h,
   holders: (token) => token.metrics?.holdersCount,
   liquidity: (token) => token.liquidity,
+  // Age sorts on createdAt itself: 'desc' (largest timestamp first) is newest-first, which
+  // the UI labels "newest" rather than "highest". Unknown createdAt sinks like any unknown.
+  age: (token) => token.createdAt,
 }
 
 /** True when any membership filter is set (sort alone does not change the row count). */
@@ -151,10 +165,6 @@ export function filtersActive(prefs: ColumnPrefs): boolean {
     rangeSet(prefs.volume) ||
     rangeSet(prefs.age)
   )
-}
-
-export function prefsActive(prefs: ColumnPrefs): boolean {
-  return prefs.sort !== null || filtersActive(prefs)
 }
 
 /** Filter, then optionally sort. Callers apply the render row cap after this, not before. */
@@ -240,6 +250,12 @@ export function sanitizeAllColumnPrefs(raw: unknown): AllColumnPrefs {
   for (const key of LIST_KEYS) {
     if (key in row) all[key] = sanitizeColumnPrefs(row[key])
   }
+  // v1 predates the age sort, so a v1 graduated `sort: null` cannot be a deliberate
+  // rejection of the newest-first default — upgrade it. From v2 on, null is explicit
+  // ("give me fomo's order") and stays put.
+  if (row.v !== STORAGE_VERSION && 'graduated' in row && all.graduated.sort === null) {
+    all.graduated.sort = { field: 'age', dir: 'desc' }
+  }
   return all
 }
 
@@ -269,7 +285,7 @@ export function saveColumnPrefs(all: AllColumnPrefs): void {
     pending = null
     if (!value) return
     try {
-      void chrome.storage.sync.set({ [COLUMNS_KEY]: value })
+      void chrome.storage.sync.set({ [COLUMNS_KEY]: { ...value, v: STORAGE_VERSION } })
     } catch {
       /* context already gone — prefs just do not persist this time */
     }

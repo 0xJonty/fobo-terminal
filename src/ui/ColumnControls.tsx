@@ -6,11 +6,11 @@ import {
   defaultPrefs,
   parseAmount,
   parseDuration,
-  prefsActive,
   type ColumnPrefs,
   type RangeFilter,
   type SortField,
 } from '~/lib/columnPrefs'
+import type { ListKey } from '~/lib/protocol'
 
 /**
  * The per-column filter/sort control: a funnel button in the column header and, when open,
@@ -18,11 +18,13 @@ import {
  * interaction calls onChange with the next prefs, and App owns persistence.
  */
 
-const SORT_OPTIONS: readonly { field: SortField; label: string }[] = [
-  { field: 'marketCap', label: 'Market cap' },
-  { field: 'volume', label: 'Volume' },
-  { field: 'holders', label: 'Holders' },
-  { field: 'liquidity', label: 'Liquidity' },
+/** `desc`/`asc` name the direction in the field's own terms — age reads newest/oldest. */
+const SORT_OPTIONS: readonly { field: SortField; label: string; desc: string; asc: string }[] = [
+  { field: 'marketCap', label: 'Market cap', desc: 'highest', asc: 'lowest' },
+  { field: 'volume', label: 'Volume', desc: 'highest', asc: 'lowest' },
+  { field: 'holders', label: 'Holders', desc: 'highest', asc: 'lowest' },
+  { field: 'liquidity', label: 'Liquidity', desc: 'highest', asc: 'lowest' },
+  { field: 'age', label: 'Age', desc: 'newest', asc: 'oldest' },
 ]
 
 type RangeField = 'marketCap' | 'volume' | 'liquidity' | 'holders' | 'age'
@@ -72,15 +74,20 @@ function RangeInput({
 }
 
 export function ColumnControls({
+  list,
   prefs,
   onChange,
 }: {
+  list: ListKey
   prefs: ColumnPrefs
   onChange: (next: ColumnPrefs) => void
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
-  const active = prefsActive(prefs)
+  // "Active" means departed from this column's own defaults, not from empty — graduated
+  // ships with a newest-first sort, and its funnel must not glow for the factory setting.
+  // Both sides are built with the same literal field order, so the string compare holds.
+  const active = JSON.stringify(prefs) !== JSON.stringify(defaultPrefs(list))
 
   // Click-away: composedPath works across the shadow boundary, plain target does not.
   useEffect(() => {
@@ -151,7 +158,7 @@ export function ColumnControls({
           <div className="colctl-section">
             <div className="colctl-section-label">Sort by</div>
             <div className="colctl-chips">
-              {SORT_OPTIONS.map(({ field, label }) => {
+              {SORT_OPTIONS.map(({ field, label, desc, asc }) => {
                 const on = prefs.sort?.field === field
                 const dir = on ? prefs.sort?.dir : undefined
                 return (
@@ -163,9 +170,9 @@ export function ColumnControls({
                     title={
                       on
                         ? dir === 'desc'
-                          ? `${label}: highest first — click for lowest first`
-                          : `${label}: lowest first — click to clear (fomo's order)`
-                        : `Sort by ${label}, highest first`
+                          ? `${label}: ${desc} first — click for ${asc} first`
+                          : `${label}: ${asc} first — click to clear (fomo's order)`
+                        : `Sort by ${label}, ${desc} first`
                     }
                     onClick={() => cycleSort(field)}
                   >
@@ -231,7 +238,12 @@ export function ColumnControls({
           </div>
 
           <div className="colctl-foot">
-            <button type="button" className="colctl-reset" disabled={!active} onClick={() => onChange(defaultPrefs())}>
+            <button
+              type="button"
+              className="colctl-reset"
+              disabled={!active}
+              onClick={() => onChange(defaultPrefs(list))}
+            >
               Reset column
             </button>
           </div>
