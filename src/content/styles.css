@@ -1183,14 +1183,11 @@
 
 /*
  * Chain identifier on the column cards: fomo's own chain glyph tiles (see ui/ChainIcon.tsx),
- * overlaid on the avatar corner with fomo's badge geometry (bottom/right -3px) and given the
- * page background as a keyline so the tile reads against any art behind it.
+ * inline at the head of the identity line, just before the ticker. Lived on the avatar
+ * corner before, but the badge crowded the art there.
  */
-.avatar-chain {
-  position: absolute;
-  bottom: -3px;
-  right: -3px;
+.symbol-chain {
+  flex-shrink: 0;
   color: var(--fobo-text-2);
-  border-radius: 4px;
-  box-shadow: 0 0 0 2px var(--fobo-bg);
+  border-radius: 3px;
 }

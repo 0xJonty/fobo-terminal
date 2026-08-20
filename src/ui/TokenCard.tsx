@@ -93,13 +93,12 @@ export const TokenCard = memo(function TokenCard({
     >
       <span className="avatar-wrap">
         <Avatar token={token} />
-        {/* fomo's overlay geometry for avatar badges: bottom -3px, right -3px. */}
-        <ChainIcon networkId={token.networkId} size={14} className="avatar-chain" />
       </span>
 
       <span className="rowlines">
         {/* 1 — identity, market cap, volume */}
         <span className="line">
+          <ChainIcon networkId={token.networkId} size={12} className="symbol-chain" />
           <span className="symbol">{token.symbol || token.name || '—'}</span>
           <span className="name">{token.name}</span>
           <span className="line-end">
