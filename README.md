@@ -30,6 +30,8 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Chain identifiers on column cards, using fomo's own chain glyph tiles
 - [x] Render suppression: while the terminal is visible, fomo's page underneath skips
       layout/paint (`content-visibility`), so the landing token page's chart costs ~nothing
+- [x] Tab mask: the visible terminal shows fomo.family/fobo-terminal and "fobo terminal" in
+      the tab — a pure display mask; fomo's router never notices, and it lifts on handoff
 - [ ] Manual verification in Chrome
 - [ ] Per-column filters and sort
 - [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)

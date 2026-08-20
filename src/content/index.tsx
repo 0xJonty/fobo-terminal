@@ -31,6 +31,16 @@ const DISMISSED_KEY = 'fobo:dismissed'
  */
 const TERMINAL_KEY = 'fobo:terminal-paths'
 
+/**
+ * fobo's own address and tab name, shown while the terminal is visible. Unlike the reverted
+ * "parking" model, this is a pure mask: replaceState with NO synthetic popstate, so fomo's
+ * router never hears about it and keeps rendering the real page underneath. The mask is
+ * lifted (URL and title restored) on every handoff, so history entries and Esc always land
+ * on real fomo pages.
+ */
+const PARKED_PATH = '/fobo-terminal'
+const TERMINAL_TITLE = 'fobo terminal'
+
 /** Bounded so a long session cannot grow this without limit. */
 const MARK_LIMIT = 20
 
@@ -64,6 +74,9 @@ function unmarkTerminal(path: string): void {
 }
 
 function isTerminalPath(path: string): boolean {
+  // The masked address IS the terminal — fomo has nothing there — so it is always mountable:
+  // a reload or bookmark of fomo.family/fobo-terminal opens straight into fobo.
+  if (path === PARKED_PATH) return true
   return readMarks().includes(path)
 }
 
@@ -209,6 +222,81 @@ function unlockPageScroll(): void {
   savedOverflow = null
 }
 
+/* ---------- URL + title mask ---------- */
+
+/** The real `pathname+search+hash` hidden behind PARKED_PATH while the terminal is visible. */
+let maskedPath: string | null = null
+
+/**
+ * Point the address bar at fobo's own path. replaceState only — deliberately NO synthetic
+ * popstate, so fomo's router keeps its current (real) location and the page underneath stays
+ * exactly as it was. Re-asserts on every mount sync: fomo's own history calls (the `/`
+ * redirect, canonicalisation) overwrite the displayed URL, and the newest real location must
+ * become the one the mask restores. Never masks `/` — fomo's home redirect is about to
+ * replace it anyway.
+ */
+function maskUrl(): void {
+  if (window.location.pathname === PARKED_PATH || window.location.pathname === '/') return
+  const real = window.location.pathname + window.location.search + window.location.hash
+  try {
+    window.history.replaceState(null, '', PARKED_PATH)
+  } catch {
+    return
+  }
+  maskedPath = real
+  lastPath = PARKED_PATH
+}
+
+/**
+ * Restore the real URL before anything stacks on top of it or the page is handed back. Only
+ * rewrites while the displayed URL is still the mask — after a real popstate (browser Back)
+ * the current entry is already a real path and must not be touched.
+ */
+function unmaskUrl(): void {
+  if (maskedPath === null) return
+  if (window.location.pathname === PARKED_PATH) {
+    try {
+      window.history.replaceState(null, '', maskedPath)
+      lastPath = window.location.pathname
+    } catch {
+      /* the mask stays; navigation still works, the entry just keeps fobo's address */
+    }
+  }
+  maskedPath = null
+}
+
+let maskedTitle: string | null = null
+let titleObserver: MutationObserver | null = null
+
+/**
+ * Own the tab name while the terminal is visible. fomo rewrites its <title> as routes and
+ * data resolve, so the observer keeps re-asserting ours and remembers fomo's newest title as
+ * the one to restore on handoff.
+ */
+function maskTitle(): void {
+  if (maskedTitle === null) maskedTitle = document.title
+  document.title = TERMINAL_TITLE
+  if (titleObserver) return
+  const el = document.querySelector('title')
+  if (!el) return
+  titleObserver = new MutationObserver(() => {
+    if (document.title !== TERMINAL_TITLE) {
+      maskedTitle = document.title
+      document.title = TERMINAL_TITLE
+    }
+  })
+  titleObserver.observe(el, { childList: true, characterData: true, subtree: true })
+}
+
+function unmaskTitle(): void {
+  titleObserver?.disconnect()
+  titleObserver = null
+  if (maskedTitle !== null) {
+    document.title = maskedTitle
+    maskedTitle = null
+  }
+}
+
 /**
  * The second deliberate exception to "never touch fomo's tree": while the terminal is visible,
  * fomo's page keeps rendering a live token page nobody can see — a TradingView chart and its
@@ -253,6 +341,8 @@ function unmount(): void {
   document.getElementById(HOST_ID)?.remove()
   unlockPageScroll()
   restorePageRender()
+  unmaskTitle()
+  unmaskUrl()
 }
 
 /**
@@ -267,6 +357,8 @@ function hide(): void {
   host.dataset.foboHidden = ''
   unlockPageScroll()
   restorePageRender()
+  unmaskTitle()
+  unmaskUrl()
   window.dispatchEvent(new Event('fobo:hidden'))
 }
 
@@ -380,6 +472,9 @@ function navigate(href: string): void {
   } catch {
     return
   }
+  // Restore the real URL first, so the destination stacks on a real history entry and Back
+  // returns to a real fomo page (which remounts the terminal and re-masks).
+  unmaskUrl()
   if (path !== window.location.pathname) unmarkTerminal(path)
   try {
     window.history.pushState(null, '', href)
@@ -421,6 +516,8 @@ async function sync(): Promise<void> {
     // vanished out from under the mount. On `/` the intent stays armed; the landing page gets
     // marked by the route watcher and this branch runs again.
     if (window.location.pathname !== '/') setPendingHome(false)
+    maskTitle()
+    maskUrl()
     return
   }
 
@@ -585,7 +682,11 @@ function recordEntryIntent(): void {
   }
 
   const isHomeEntry =
-    (entry && entry.redirectCount > 0) || entryPath === '/' || entryPath === '' || cameFromRoot
+    (entry && entry.redirectCount > 0) ||
+    entryPath === '/' ||
+    entryPath === '' ||
+    entryPath === PARKED_PATH ||
+    cameFromRoot
 
   if (!isHomeEntry) {
     // A fresh navigation to a specific page is a request for that page: clear any stale intent
@@ -614,7 +715,28 @@ window.addEventListener(
   { capture: true },
 )
 
+/**
+ * A document that BOOTED on the masked address means a reload or bookmark of fobo's URL: fomo
+ * hydrated its 404 view there, which is no page to sit over (it broke the alerts feed when
+ * the old parking model lived on it). Drive fomo home — here the synthetic popstate is wanted,
+ * fomo's router follows it, and the normal home-intent flow lands on a real page, mounts, and
+ * re-masks the URL.
+ */
+function recoverFromMaskedLoad(): void {
+  if (window.location.pathname !== PARKED_PATH) return
+  try {
+    window.history.replaceState(null, '', '/')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  } catch {
+    return
+  }
+  lastPath = '/'
+  markTerminal('/')
+  setPendingHome(true)
+}
+
 recordEntryIntent()
+recoverFromMaskedLoad()
 watchRoute()
 void sync()
 if (isMarketingPage()) waitForSession()

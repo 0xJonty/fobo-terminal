@@ -77,9 +77,14 @@ branch that suppressed the mount. No line at all means the content script never 
 - While the terminal is visible, fomo's page underneath gets `content-visibility: hidden` on its
   top-level body children (saved/restored verbatim, like the scroll lock) so the landing token
   page's chart stops paying layout/paint costs; its JS and sockets keep running. A synthetic
-  resize is dispatched on restore. Do NOT resurrect URL parking (replaceState to a reserved
-  path): fomo's 404 view broke the alerts feed and flashed on every handoff — reverted after
-  live use.
+  resize is dispatched on restore. Do NOT resurrect URL parking (replaceState + synthetic
+  popstate onto a reserved path): routing fomo onto its 404 view broke the alerts feed and
+  flashed on every handoff — reverted after live use.
+- The visible terminal MASKS the tab instead: URL shown as `/fobo-terminal` and title as
+  "fobo terminal" via bare replaceState / document.title with NO synthetic popstate, so fomo's
+  router never notices and the real page stays live underneath. The mask lifts on every handoff
+  (navigate/Esc/unmount); a document that boots on the masked address is driven home
+  (recoverFromMaskedLoad) so fomo never sits on its 404.
 
 ## Git
 
