@@ -1,4 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
+import {
+  ACCOUNT_ICON,
+  DEPOSIT_ICON,
+  LOGOUT_ICON,
+  PROFILE_ICON,
+  REFERRALS_ICON,
+  SETTINGS_ICON,
+  TRANSFERS_ICON,
+  WITHDRAW_ICON,
+  type MenuIcon,
+} from '~/ui/headerMenuIcons'
 import {
   currentUser,
   headerNumbers,
@@ -81,12 +93,36 @@ interface SearchResults {
   traders: FomoTrader[]
 }
 
+/** One row of a header dropdown, drawn with fomo's own icon geometry. */
+function MenuItem({
+  icon,
+  label,
+  onSelect,
+}: {
+  icon: MenuIcon
+  label: string
+  onSelect: () => void
+}) {
+  return (
+    <button type="button" className="hdrmenu-item" onClick={onSelect}>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox={icon.viewBox} fill="none" className="hdrmenu-icon">
+        {icon.paths.map((d, i) => (
+          <path key={i} d={d} fill="currentColor" />
+        ))}
+      </svg>
+      {label}
+    </button>
+  )
+}
+
 export function TopBar({
   onNavigate,
   onDeposit,
+  onHeaderAction,
 }: {
   onNavigate: (href: string) => void
   onDeposit: () => void
+  onHeaderAction: (menu: 'cash' | 'profile', item: string) => void
 }) {
   /* ---- search ---- */
   const [query, setQuery] = useState('')
@@ -177,6 +213,33 @@ export function TopBar({
     setQuery('')
     setResults(null)
     onNavigate(`/profile/${trader.userHandle}`)
+  }
+
+  /* ---- header dropdowns, mirroring fomo's own cash and profile menus ---- */
+
+  const [menu, setMenu] = useState<'cash' | 'profile' | null>(null)
+  const menusRef = useRef<HTMLUListElement>(null)
+
+  useEffect(() => {
+    if (!menu) return
+    const onDown = (event: Event) => {
+      const root = menusRef.current
+      if (root && !event.composedPath().includes(root)) setMenu(null)
+    }
+    window.addEventListener('pointerdown', onDown)
+    return () => window.removeEventListener('pointerdown', onDown)
+  }, [menu])
+
+  useEffect(() => {
+    const close = () => setMenu(null)
+    window.addEventListener('fobo:hidden', close)
+    return () => window.removeEventListener('fobo:hidden', close)
+  }, [])
+
+  /** Menu items that step aside and drive fomo's real header menu (see content/index.tsx). */
+  const act = (which: 'cash' | 'profile', item: string) => {
+    setMenu(null)
+    onHeaderAction(which, item)
   }
 
   const panelOpen = query.trim().length >= SEARCH_MIN_CHARS
@@ -277,23 +340,45 @@ export function TopBar({
 
       <div className="topbar-side topbar-side-end">
         {user && (
-          <ul className="chips">
+          <ul className="chips" ref={menusRef}>
             <li className="chip chip-cash">
-              <span className="chip-line">
-                <span className="chip-value">
-                  {numbers ? usdExact(numbers.cashUsd) : '-'}
+              <button
+                type="button"
+                className="chip-trigger"
+                aria-expanded={menu === 'cash'}
+                onClick={() => setMenu((current) => (current === 'cash' ? null : 'cash'))}
+              >
+                <span className="chip-line">
+                  <span className="chip-value">
+                    {numbers ? usdExact(numbers.cashUsd) : '-'}
+                  </span>
+                  <span className="chip-label">cash</span>
                 </span>
-                <span className="chip-label">cash</span>
-              </span>
+                <ChevronDown size={12} className="chip-chevron" data-open={menu === 'cash' || undefined} />
+              </button>
               <button type="button" className="chip-deposit" onClick={onDeposit}>
                 Deposit more
               </button>
+              {menu === 'cash' && (
+                <div className="hdrmenu hdrmenu-cash">
+                  <MenuItem
+                    icon={DEPOSIT_ICON}
+                    label="Deposit"
+                    onSelect={() => {
+                      setMenu(null)
+                      onDeposit()
+                    }}
+                  />
+                  <MenuItem icon={WITHDRAW_ICON} label="Withdraw" onSelect={() => act('cash', 'Withdraw')} />
+                </div>
+              )}
             </li>
             <li className="chip chip-profile">
               <button
                 type="button"
                 className="chip-profile-link"
-                onClick={() => user.userHandle && onNavigate(`/profile/${user.userHandle}`)}
+                aria-expanded={menu === 'profile'}
+                onClick={() => setMenu((current) => (current === 'profile' ? null : 'profile'))}
                 title={profileName + (user.userHandle ? ` (@${user.userHandle})` : '')}
               >
                 <span className="chip-profile-lines">
@@ -311,6 +396,25 @@ export function TopBar({
                 </span>
                 <CircleImage src={user.profilePictureLink} label={profileName} className="chip-avatar" />
               </button>
+              {menu === 'profile' && (
+                <div className="hdrmenu hdrmenu-profile">
+                  {user.userHandle && (
+                    <MenuItem
+                      icon={PROFILE_ICON}
+                      label="Your profile"
+                      onSelect={() => {
+                        setMenu(null)
+                        onNavigate(`/profile/${user.userHandle}`)
+                      }}
+                    />
+                  )}
+                  <MenuItem icon={ACCOUNT_ICON} label="Manage account" onSelect={() => act('profile', 'Manage account')} />
+                  <MenuItem icon={SETTINGS_ICON} label="Settings" onSelect={() => act('profile', 'Settings')} />
+                  <MenuItem icon={TRANSFERS_ICON} label="Transfers" onSelect={() => act('profile', 'Transfers')} />
+                  <MenuItem icon={REFERRALS_ICON} label="Referrals" onSelect={() => act('profile', 'Referrals')} />
+                  <MenuItem icon={LOGOUT_ICON} label="Log out" onSelect={() => act('profile', 'Log out')} />
+                </div>
+              )}
             </li>
           </ul>
         )}

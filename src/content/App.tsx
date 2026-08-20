@@ -51,9 +51,11 @@ const FRESH_MS = 900
 export function App({
   onOpen,
   onDeposit,
+  onHeaderAction,
 }: {
   onOpen: (href: string) => void
   onDeposit: () => void
+  onHeaderAction: (menu: 'cash' | 'profile', item: string) => void
 }) {
   const [lists, setLists] = useState<Lists>(EMPTY)
   const [status, setStatus] = useState<SocketStatus>('connecting')
@@ -440,7 +442,7 @@ export function App({
 
   return (
     <div className="shell">
-      <TopBar onNavigate={onOpen} onDeposit={onDeposit} />
+      <TopBar onNavigate={onOpen} onDeposit={onDeposit} onHeaderAction={onHeaderAction} />
 
       <HoldingsBar onNavigate={onOpen} />
 

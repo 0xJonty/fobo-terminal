@@ -33,6 +33,9 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Bottom bar: fomo's own footer recreated one-to-one — majors, watchlist ticker, status dot
 - [x] Holdings bar: the account's open positions under the top bar, Axiom-style chips
 - [x] Chain identifiers on column cards, using fomo's own chain glyph tiles
+- [x] Header dropdowns: fomo's cash menu (Deposit / Withdraw) and profile menu (Your
+      profile, Manage account, Settings, Transfers, Referrals, Log out) recreated with
+      fomo's own icons; modal-backed items step aside and drive fomo's real menu
 - [x] Render suppression: while the terminal is visible, fomo's page underneath skips
       layout/paint (`content-visibility`), so the landing token page's chart costs ~nothing
 - [x] Tab mask: the visible terminal shows fomo.family/fobo-terminal and "fobo terminal" in

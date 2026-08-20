@@ -434,6 +434,68 @@ function requestDeposit(): void {
   }, DEPOSIT_POLL_MS)
 }
 
+/**
+ * Drive an item in one of fomo's own header menus (the cash chip's Deposit/Withdraw, the
+ * profile chip's account items). Same philosophy as the deposit button: those actions open
+ * modals living in fomo's React tree and cannot be recreated honestly, so the terminal
+ * steps aside and clicks the real thing. fomo's menus are Radix navigation-menu triggers —
+ * content renders only while open, so the trigger gets the full pointer sequence first and
+ * the item is clicked on a later poll tick. If fomo's header is not there (or reshaped),
+ * nothing happens rather than something invented.
+ */
+const HEADER_MENU_POLL_MS = 250
+const HEADER_MENU_POLL_LIMIT = 32
+
+function headerMenuTrigger(menu: 'cash' | 'profile'): HTMLButtonElement | null {
+  const nav = document.querySelector('nav[class*=navigation-menu]')
+  if (!nav || nav.closest(`#${HOST_ID}`)) return null
+  const triggers = [...nav.querySelectorAll<HTMLButtonElement>('button[data-state]')]
+  return (menu === 'cash' ? triggers[0] : triggers[1]) ?? null
+}
+
+function requestHeaderMenu(menu: 'cash' | 'profile', itemText: string): void {
+  dismiss()
+
+  const drive = (): boolean => {
+    const trigger = headerMenuTrigger(menu)
+    if (!trigger) return false
+    if (trigger.dataset.state !== 'open') {
+      for (const type of ['pointerenter', 'pointermove', 'pointerdown', 'pointerup', 'click'] as const) {
+        trigger.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse' }))
+      }
+      return false
+    }
+    const li = trigger.closest('li')
+    if (!li) return false
+    for (const el of li.querySelectorAll<HTMLElement>('a, button')) {
+      if (el !== trigger && el.textContent?.trim() === itemText) {
+        el.click()
+        return true
+      }
+    }
+    return false
+  }
+
+  // No header in the page yet — same recovery as the deposit flow: drive fomo home (its `/`
+  // redirect boots a real page with the real header), then keep polling.
+  if (!headerMenuTrigger(menu)) {
+    try {
+      window.history.pushState(null, '', '/')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      lastPath = window.location.pathname
+    } catch {
+      /* the poll below still gets its tries on the current page */
+    }
+  }
+
+  if (drive()) return
+  let tries = 0
+  const timer = window.setInterval(() => {
+    tries += 1
+    if (drive() || tries >= HEADER_MENU_POLL_LIMIT) window.clearInterval(timer)
+  }, HEADER_MENU_POLL_MS)
+}
+
 function render(): void {
   if (host) {
     delete host.dataset.foboHidden
@@ -465,7 +527,7 @@ function render(): void {
   root = createRoot(container)
   root.render(
     <StrictMode>
-      <App onOpen={navigate} onDeposit={requestDeposit} />
+      <App onOpen={navigate} onDeposit={requestDeposit} onHeaderAction={requestHeaderMenu} />
     </StrictMode>,
   )
 }
