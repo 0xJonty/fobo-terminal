@@ -90,12 +90,15 @@ branch that suppressed the mount. No line at all means the content script never 
   (`fobo:terminal-paths`) — the `/` entry's landing page, an explicit summon, or Back onto one.
   Everything else (profiles, coin pages, fomo-internal links) belongs to fomo. Do not regress to
   mount-everywhere; that covered pages the user had just navigated to.
-- Home intent arms at the CLICK on fomo's home links (the logo is a plain same-origin
-  `<a href="/">`), never by watching for the transient `/`: fomo's redirect off `/` resolves
-  inside one 300ms poll tick and can land on the very page it left, so the `/` hop is
-  invisible to the route watcher. The poll's same-path branch claims the page when the intent
-  is armed. Related: navigating to the exact path the terminal sits on (top holding == the `/`
-  landing page) must unmark + hide, with nothing pushed — there is no popstate to raise.
+- Home clicks are INTERCEPTED (capture-phase; the logo is a plain same-origin `<a href="/">`):
+  preventDefault + summon the terminal over the current page. Never chase fomo's `/` redirect —
+  it resolves inside one 300ms poll tick, hops through transit paths (a bare `/token`, observed
+  live), and can land on the very page it left. Anything that must happen once per DESTINATION
+  (spending the home intent, masking the URL) is settle-gated (600ms of path stillness):
+  mounting over a transit hop used to consume the intent, leave the real landing page unmarked,
+  and mask the transit history entry — terminal dead until a toolbar toggle. Related: navigating
+  to the exact path the terminal sits on (top holding == the `/` landing page) must unmark +
+  hide, with nothing pushed — there is no popstate to raise.
 - While the terminal is visible, fomo's page underneath gets `content-visibility: hidden` on its
   top-level body children (saved/restored verbatim, like the scroll lock) so the landing token
   page's chart stops paying layout/paint costs; its JS and sockets keep running. A synthetic

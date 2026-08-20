@@ -522,13 +522,18 @@ async function sync(): Promise<void> {
   if (decision === 'mount') {
     removeLauncher()
     render()
-    // The intent is spent only once fomo has left `/` — its home redirect is still resolving
-    // there, and clearing early left the redirect's landing page unmarked, so the terminal
-    // vanished out from under the mount. On `/` the intent stays armed; the landing page gets
-    // marked by the route watcher and this branch runs again.
-    if (window.location.pathname !== '/') setPendingHome(false)
+    // The intent is spent only once the route has SETTLED off `/`. fomo's home redirect hops
+    // through transit paths (a bare `/token`, observed live) and the terminal can mount over
+    // one mid-flight; clearing on that first mount consumed the intent before the real
+    // landing page arrived, which therefore went unmarked — the terminal flashed up and hid
+    // itself, dead until a toolbar toggle re-marked something. The same gate holds the URL
+    // mask back so a transit history entry is never rewritten to fobo's address (a stale
+    // masked entry 404s fomo when Back passes through it). The route watcher re-runs sync
+    // once the path stops moving, so neither the deferred clear nor the mask is lost.
+    const settled = routeSettled()
+    if (settled && window.location.pathname !== '/') setPendingHome(false)
     maskTitle()
-    maskUrl()
+    if (settled) maskUrl()
     return
   }
 
@@ -550,6 +555,20 @@ async function sync(): Promise<void> {
  * redirect off `/` that happens before fomo has finished booting.
  */
 let lastPath = window.location.pathname
+
+/**
+ * When the path last moved. fomo's home redirect hops through transit paths (observed live:
+ * a bare `/token` between `/` and the landing page), so "the route changed" and "the route
+ * has arrived" are different events — anything that must happen once per DESTINATION (spending
+ * the home intent, masking the URL) waits until the path has been still this long.
+ */
+const SETTLE_MS = 600
+let lastPathChangeAt = Date.now()
+
+function routeSettled(): boolean {
+  return Date.now() - lastPathChangeAt >= SETTLE_MS
+}
+
 function watchRoute(): void {
   const check = () => {
     const path = window.location.pathname
@@ -563,9 +582,22 @@ function watchRoute(): void {
       if (path !== '/' && isPendingHome() && !(host && host.dataset.foboHidden === undefined)) {
         markTerminal(path)
         void sync()
+      } else if (
+        host &&
+        host.dataset.foboHidden === undefined &&
+        maskedPath === null &&
+        path !== '/' &&
+        routeSettled()
+      ) {
+        // The mount ran before the route settled, so spending the intent and masking the
+        // URL were deferred (see sync's mount branch). The path has now been still for a
+        // full settle window — re-sync to apply them. maskedPath goes non-null right
+        // after, so this fires once per mount.
+        void sync()
       }
       return
     }
+    lastPathChangeAt = Date.now()
     // While the home intent is armed, every automatic landing is still "the home screen" —
     // fomo can hop more than once (`/coin` shim, address canonicalisation) before settling.
     if (isPendingHome()) markTerminal(path)
@@ -739,13 +771,14 @@ window.addEventListener(
 )
 
 /**
- * fomo's own home links (the header logo) are a home-screen request, and the terminal IS the
- * home screen — so the intent arms at the click, not at the transient `/`. The `/` hop itself
- * is not a reliable signal: fomo's redirect off `/` can resolve inside one poll interval, and
- * can land back on the very page it left, in which case the route watcher sees no change at
- * all (verified live: the logo is a plain same-origin <a href="/">). Capture phase runs
- * before fomo's router preventDefaults the click. The pointerdown listener above has already
- * cleared any stale intent by the time this fires, so arming here is the last word.
+ * fomo's own home links (the header logo, a plain same-origin <a href="/">, verified live)
+ * are a home-screen request, and the terminal IS the home screen — so serve it directly:
+ * swallow the click before fomo's router sees it and show the terminal over the page we are
+ * already on. Letting fomo run its `/` redirect was the fragile version — the redirect
+ * resolves inside one poll tick, hops through transit paths, and can land back on the very
+ * page it left, so every downstream signal was a race. Capture phase on window runs ahead
+ * of fomo's React handlers. Modified clicks (new tab) pass through untouched — the new
+ * tab's own entry intent covers those.
  */
 window.addEventListener(
   'click',
@@ -765,7 +798,12 @@ window.addEventListener(
       return
     }
     if (url.origin !== window.location.origin || url.pathname !== '/') return
-    setPendingHome(true)
+    event.preventDefault()
+    event.stopPropagation()
+    // An explicit summon, same as the launcher: clear any dismissal and claim this page.
+    setDismissed(false)
+    markTerminal(window.location.pathname)
+    void sync()
   },
   { capture: true },
 )
