@@ -32,8 +32,10 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
       layout/paint (`content-visibility`), so the landing token page's chart costs ~nothing
 - [x] Tab mask: the visible terminal shows fomo.family/fobo-terminal and "fobo terminal" in
       the tab — a pure display mask; fomo's router never notices, and it lifts on handoff
+- [x] Per-column filters and sort: sort by market cap / volume / holders / liquidity
+      (highest or lowest first), filter by chain and min/max market cap, liquidity, holders,
+      volume, and token age; saved in `chrome.storage.sync` so they survive reloads
 - [ ] Manual verification in Chrome
-- [ ] Per-column filters and sort
 - [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)
 
 ## What it does

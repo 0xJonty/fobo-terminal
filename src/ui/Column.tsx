@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { ColumnControls } from '~/ui/ColumnControls'
+import { filtersActive, type ColumnPrefs } from '~/lib/columnPrefs'
 import { TokenCard } from '~/ui/TokenCard'
 import type { Token } from '~/types/token'
 
@@ -21,16 +23,23 @@ function Skeleton() {
 export function Column({
   title,
   tokens,
+  total,
   loading,
   showBond,
   freshKeys,
+  prefs,
+  onPrefsChange,
   onOpen,
 }: {
   title: string
   tokens: Token[]
+  /** Rows in fomo's store for this list, before our filters and the render cap. */
+  total: number
   loading: boolean
   showBond: boolean
   freshKeys: ReadonlySet<string>
+  prefs: ColumnPrefs
+  onPrefsChange: (next: ColumnPrefs) => void
   onOpen: (token: Token) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -70,8 +79,14 @@ export function Column({
     <section className="column">
       <header className="column-header">
         <h2 className="column-title">{title}</h2>
-        <span className="column-count">{tokens.length}</span>
+        <span
+          className="column-count"
+          title={filtersActive(prefs) ? `${tokens.length} of ${total} rows pass the filters` : undefined}
+        >
+          {filtersActive(prefs) ? `${tokens.length}/${total}` : tokens.length}
+        </span>
         {frozen && <span className="column-paused">paused</span>}
+        <ColumnControls prefs={prefs} onChange={onPrefsChange} />
       </header>
 
       <div
@@ -84,7 +99,9 @@ export function Column({
           Array.from({ length: 8 }, (_, i) => <Skeleton key={i} />)
         ) : rows.length === 0 ? (
           <p className="column-empty">
-            Nothing here yet. Waiting for fomo to stream this list.
+            {filtersActive(prefs) && total > 0
+              ? `No rows pass this column's filters (${total} hidden).`
+              : 'Nothing here yet. Waiting for fomo to stream this list.'}
           </p>
         ) : (
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>

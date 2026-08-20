@@ -5,6 +5,14 @@ import { Column } from '~/ui/Column'
 import { HoldingsBar } from '~/ui/HoldingsBar'
 import { TopBar } from '~/ui/TopBar'
 import { fetchAlertsPage, mergeAlerts, parseAlert, type AlertItem } from '~/lib/alerts'
+import {
+  applyPrefs,
+  defaultAllPrefs,
+  readColumnPrefs,
+  saveColumnPrefs,
+  type AllColumnPrefs,
+  type ColumnPrefs,
+} from '~/lib/columnPrefs'
 import { currentUser } from '~/lib/fomoApi'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
@@ -29,6 +37,25 @@ export function App({
 }) {
   const [lists, setLists] = useState<Lists>(EMPTY)
   const [status, setStatus] = useState<SocketStatus>('connecting')
+
+  /* ---- per-column filter & sort prefs ---- */
+
+  // Loaded once per page load; within a session the app stays mounted across handoffs, so
+  // this state alone carries terminal -> token -> terminal. No storage watcher: this app
+  // instance is the only writer, and watching would echo debounced writes back over
+  // whatever the user typed since.
+  const [colPrefs, setColPrefs] = useState<AllColumnPrefs>(defaultAllPrefs)
+  useEffect(() => {
+    void readColumnPrefs().then(setColPrefs)
+  }, [])
+
+  const changePrefs = useCallback((list: ListKey, next: ColumnPrefs) => {
+    setColPrefs((current) => {
+      const all = { ...current, [list]: next }
+      saveColumnPrefs(all)
+      return all
+    })
+  }, [])
   const [freshKeys, setFreshKeys] = useState<ReadonlySet<string>>(new Set())
   const freshTimers = useRef(new Map<string, number>())
 
@@ -174,22 +201,34 @@ export function App({
   }, [networkIds])
 
   /**
-   * Left join: fomo owns membership and order, Mobula only decorates.
-   * The 100-row cap is applied here, at the render boundary, exactly as fomo does it.
+   * Left join: fomo owns membership and order, Mobula only decorates. The user's prefs
+   * then narrow (filters) or re-order (an explicit sort) that stream — with defaults this
+   * is a no-op and fomo's order renders untouched.
+   *
+   * The 100-row cap stays at the render boundary, exactly as fomo does it, but is applied
+   * AFTER filtering: the whole store is filtered, so "min 10k MC" surfaces matching rows
+   * from beyond the first hundred instead of just thinning the visible page. Decoration
+   * runs on the full list for the same reason — the holders filter needs metrics on every
+   * candidate row, and metricsFor is a map lookup.
    */
   const enriched = useMemo(() => {
     void enrichStamp
-    const decorate = (rows: Token[]) =>
-      rows.slice(0, MAX_ROWS).map((token) => {
-        const metrics = metricsFor(token.key, token.networkId)
-        return metrics ? { ...token, metrics } : token
-      })
+    const now = Date.now()
+    const build = (key: ListKey) =>
+      applyPrefs(
+        lists[key].map((token) => {
+          const metrics = metricsFor(token.key, token.networkId)
+          return metrics ? { ...token, metrics } : token
+        }),
+        colPrefs[key],
+        now,
+      ).slice(0, MAX_ROWS)
     return {
-      'pre-graduated': decorate(lists['pre-graduated']),
-      graduated: decorate(lists.graduated),
-      trending: decorate(lists.trending),
+      'pre-graduated': build('pre-graduated'),
+      graduated: build('graduated'),
+      trending: build('trending'),
     } satisfies Lists
-  }, [lists, enrichStamp])
+  }, [lists, enrichStamp, colPrefs])
 
   const open = useCallback(
     (token: Token) => {
@@ -229,9 +268,12 @@ export function App({
               key={key}
               title={LIST_LABEL[key]}
               tokens={enriched[key]}
+              total={lists[key].length}
               loading={totalRows === 0 && status !== 'unauthenticated'}
               showBond={key === 'pre-graduated'}
               freshKeys={freshKeys}
+              prefs={colPrefs[key]}
+              onPrefsChange={(next) => changePrefs(key, next)}
               onOpen={open}
             />
           ))}
