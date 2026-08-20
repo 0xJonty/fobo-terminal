@@ -553,7 +553,19 @@ let lastPath = window.location.pathname
 function watchRoute(): void {
   const check = () => {
     const path = window.location.pathname
-    if (path === lastPath) return
+    if (path === lastPath) {
+      // A home request can resolve with no observable path change at all: fomo's `/`
+      // redirect can land back on the very page it left (logo-home from the page `/`
+      // redirects to), and the whole `/` hop fits inside one poll interval. The armed
+      // intent claims the current page from here; sync's mount branch then clears it.
+      // Not while the terminal is visible (nothing to claim) and not on `/` itself —
+      // the redirect off `/` always produces a real path change for the branch below.
+      if (path !== '/' && isPendingHome() && !(host && host.dataset.foboHidden === undefined)) {
+        markTerminal(path)
+        void sync()
+      }
+      return
+    }
     // While the home intent is armed, every automatic landing is still "the home screen" —
     // fomo can hop more than once (`/coin` shim, address canonicalisation) before settling.
     if (isPendingHome()) markTerminal(path)
@@ -722,6 +734,38 @@ window.addEventListener(
   () => {
     if (host && host.dataset.foboHidden === undefined) return
     setPendingHome(false)
+  },
+  { capture: true },
+)
+
+/**
+ * fomo's own home links (the header logo) are a home-screen request, and the terminal IS the
+ * home screen — so the intent arms at the click, not at the transient `/`. The `/` hop itself
+ * is not a reliable signal: fomo's redirect off `/` can resolve inside one poll interval, and
+ * can land back on the very page it left, in which case the route watcher sees no change at
+ * all (verified live: the logo is a plain same-origin <a href="/">). Capture phase runs
+ * before fomo's router preventDefaults the click. The pointerdown listener above has already
+ * cleared any stale intent by the time this fires, so arming here is the last word.
+ */
+window.addEventListener(
+  'click',
+  (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    // Clicks inside a visible terminal are the terminal's own.
+    if (host && host.dataset.foboHidden === undefined) return
+    const anchor = event
+      .composedPath()
+      .find((el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement)
+    // An <a> with no href resolves to the current URL, not home — require a real attribute.
+    if (!anchor?.getAttribute('href')) return
+    let url: URL
+    try {
+      url = new URL(anchor.href, window.location.origin)
+    } catch {
+      return
+    }
+    if (url.origin !== window.location.origin || url.pathname !== '/') return
+    setPendingHome(true)
   },
   { capture: true },
 )
