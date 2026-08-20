@@ -20,22 +20,40 @@ const PAGE_LIMIT = 50
 /** Bound on the merged list, so a long-lived tab cannot grow it without limit. */
 export const MAX_FEED = 400
 
-/** Every type fomo's Feed tab renders. The query asks for all of them. */
-const FEED_TYPES = [
-  'large_buy',
-  'large_sell',
-  'large_transfer_in',
-  'large_transfer_out',
-  'multi_user_buy',
-  'multi_user_sell',
-  'new_token_listing',
-  'price_since_listing',
-  'single_user_sell',
-  'single_user_transfer_out',
-  'thesis_created',
-  'user_trade_profit_milestone',
-  'user_with_smart_following',
-] as const
+/**
+ * fomo's own filter groups for the Feed tab, lifted verbatim from its bundle (ids, member
+ * types, and labels via its i18n keys). The UI toggles groups, and the query carries the
+ * enabled groups' types. fomo's "manual" posts (the pinned recaps) belong to no group and
+ * ride along whenever ANY group is enabled; with every group off, fomo fetches nothing.
+ */
+export interface FeedGroup {
+  id: string
+  label: string
+  types: readonly string[]
+}
+
+export const FEED_GROUPS: readonly FeedGroup[] = [
+  {
+    id: 'trades',
+    label: 'Trades',
+    types: ['large_buy', 'large_sell', 'large_transfer_in', 'large_transfer_out', 'single_user_transfer_out'],
+  },
+  { id: 'closed', label: 'Closed positions', types: ['single_user_sell'] },
+  { id: 'theses', label: 'Theses', types: ['thesis_created'] },
+  { id: 'multiUser', label: 'Multi-user trades', types: ['multi_user_buy', 'multi_user_sell'] },
+  { id: 'newListings', label: 'New listings', types: ['new_token_listing'] },
+  { id: 'priceSpikes', label: 'Price spikes', types: ['price_since_listing'] },
+  { id: 'milestones', label: 'Profit milestones', types: ['user_trade_profit_milestone'] },
+  { id: 'newTraders', label: 'New traders', types: ['user_with_smart_following'] },
+]
+
+/** The feedTypes params for a disabled-groups set — fomo's `je`, exactly. */
+export function feedTypesFor(disabledGroups: readonly string[]): string[] {
+  const enabled = FEED_GROUPS.filter((group) => !disabledGroups.includes(group.id)).flatMap(
+    (group) => [...group.types],
+  )
+  return enabled.length === 0 ? [] : [...enabled, 'manual']
+}
 
 interface FeedBase {
   id: string
@@ -322,8 +340,14 @@ export interface FeedPage {
   hasMore: boolean
 }
 
-export async function fetchFeedPage(lastFeedId?: string): Promise<FeedPage | null> {
-  const params = FEED_TYPES.map((type) => `feedTypes=${type}`).join('&')
+export async function fetchFeedPage(
+  lastFeedId?: string,
+  disabledGroups: readonly string[] = [],
+): Promise<FeedPage | null> {
+  const types = feedTypesFor(disabledGroups)
+  // Every group off means fomo fetches nothing — the endpoint 400s on an empty types list.
+  if (types.length === 0) return { items: [], lastId: undefined, hasMore: false }
+  const params = types.map((type) => `feedTypes=${type}`).join('&')
   const path = `/feed?limit=${PAGE_LIMIT}${lastFeedId ? `&lastFeedId=${encodeURIComponent(lastFeedId)}` : ''}&${params}`
   const raw = await fomoCall<{ feed?: unknown[] }>(path)
   if (!raw || !Array.isArray(raw.feed)) return null

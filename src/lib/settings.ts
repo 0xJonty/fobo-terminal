@@ -11,25 +11,75 @@ export const ALERTS_KEY = 'fobo:alerts'
 export const ALERTS_MIN_WIDTH = 280
 export const ALERTS_MAX_WIDTH = 560
 
+/**
+ * The Alerts view's filters, mirroring fomo's own (its alerts-feed-threshold-storage store):
+ * min trade size, min trader portfolio value, and a market-cap range, all sent as query
+ * params on the trading-activity backfill. Raw user strings so the boxes round-trip; '' is
+ * unset. fomo's stock threshold is $1,000 — the default here matches it.
+ */
+export interface AlertsFilterSettings {
+  threshold: string
+  minEquity: string
+  minMarketCap: string
+  maxMarketCap: string
+}
+
+export const ALERTS_FILTERS_DEFAULT: AlertsFilterSettings = {
+  threshold: '1k',
+  minEquity: '',
+  minMarketCap: '',
+  maxMarketCap: '',
+}
+
 export interface AlertsSettings {
   enabled: boolean
   side: 'left' | 'right'
   width: number
   /** fomo's alert ding, replicated for live alerts. Defaults on, like fomo's own. */
   sound: boolean
+  /** Feed view: fomo's filter groups the user has switched off (empty = everything). */
+  feedDisabledGroups: string[]
+  alertsFilters: AlertsFilterSettings
 }
 
-export const ALERTS_DEFAULT: AlertsSettings = { enabled: true, side: 'right', width: 340, sound: true }
+export const ALERTS_DEFAULT: AlertsSettings = {
+  enabled: true,
+  side: 'right',
+  width: 340,
+  sound: true,
+  feedDisabledGroups: [],
+  alertsFilters: ALERTS_FILTERS_DEFAULT,
+}
+
+function sanitizeFilterString(value: unknown): string {
+  return typeof value === 'string' ? value.slice(0, 24) : ''
+}
 
 /** Clamp and default whatever is in storage, so a bad write can never break the layout. */
 export function sanitizeAlertsSettings(raw: unknown): AlertsSettings {
   const row = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
   const width = typeof row.width === 'number' && Number.isFinite(row.width) ? row.width : ALERTS_DEFAULT.width
+  const filters = (
+    typeof row.alertsFilters === 'object' && row.alertsFilters !== null ? row.alertsFilters : null
+  ) as Record<string, unknown> | null
   return {
     enabled: row.enabled !== false,
     side: row.side === 'left' ? 'left' : 'right',
     width: Math.min(ALERTS_MAX_WIDTH, Math.max(ALERTS_MIN_WIDTH, Math.round(width))),
     sound: row.sound !== false,
+    feedDisabledGroups: Array.isArray(row.feedDisabledGroups)
+      ? [...new Set(row.feedDisabledGroups)].filter((id): id is string => typeof id === 'string').slice(0, 16)
+      : [],
+    // A payload written before the filters existed keeps fomo's defaults; a present-but-
+    // partial one keeps what it has, '' for the rest.
+    alertsFilters: filters
+      ? {
+          threshold: sanitizeFilterString(filters.threshold),
+          minEquity: sanitizeFilterString(filters.minEquity),
+          minMarketCap: sanitizeFilterString(filters.minMarketCap),
+          maxMarketCap: sanitizeFilterString(filters.maxMarketCap),
+        }
+      : ALERTS_FILTERS_DEFAULT,
   }
 }
 

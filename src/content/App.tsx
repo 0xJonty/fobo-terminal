@@ -4,13 +4,21 @@ import { Column } from '~/ui/Column'
 import { HoldingsBar } from '~/ui/HoldingsBar'
 import { SidePanel } from '~/ui/SidePanel'
 import { TopBar } from '~/ui/TopBar'
-import { fetchAlertsPage, mergeAlerts, parseAlert, type AlertItem } from '~/lib/alerts'
+import {
+  fetchAlertsPage,
+  mergeAlerts,
+  parseAlert,
+  passesAlertsFilters,
+  type AlertItem,
+  type AlertsFilters,
+} from '~/lib/alerts'
 import { fetchFeedPage, mergeFeed, type FeedItem } from '~/lib/feed'
 import { dingForAlert, unlockAudio } from '~/lib/sound'
 import { WATCHLIST_POLL_MS, fetchWatchlistTokens } from '~/lib/watchlist'
 import {
   applyPrefs,
   defaultAllPrefs,
+  parseAmount,
   readColumnPrefs,
   saveColumnPrefs,
   type AllColumnPrefs,
@@ -27,6 +35,7 @@ import {
   saveAlertsSettings,
   savePanelView,
   watchAlertsSettings,
+  type AlertsFilterSettings,
   type AlertsSettings,
   type PanelView,
 } from '~/lib/settings'
@@ -138,6 +147,48 @@ export function App({
     })
   }, [])
 
+  // fomo's filters for both live views, edited in the panel header and persisted with the
+  // rest of the panel settings.
+  const changeFeedGroups = useCallback((feedDisabledGroups: string[]) => {
+    setAlertsSettings((current) => {
+      if (!current) return current
+      const next = { ...current, feedDisabledGroups }
+      saveAlertsSettings(next)
+      return next
+    })
+  }, [])
+  const changeAlertsFilters = useCallback((alertsFilters: AlertsFilterSettings) => {
+    setAlertsSettings((current) => {
+      if (!current) return current
+      const next = { ...current, alertsFilters }
+      saveAlertsSettings(next)
+      return next
+    })
+  }, [])
+
+  /** The raw filter strings parsed to the numbers fomo's endpoint takes ("1k" -> 1000). */
+  const alertsFilters = useMemo<AlertsFilters>(() => {
+    const raw = alertsSettings?.alertsFilters
+    if (!raw) return {}
+    return {
+      threshold: parseAmount(raw.threshold),
+      minEquity: parseAmount(raw.minEquity),
+      minMarketCap: parseAmount(raw.minMarketCap),
+      maxMarketCap: parseAmount(raw.maxMarketCap),
+    }
+  }, [alertsSettings])
+  const alertsFiltersRef = useRef(alertsFilters)
+  useEffect(() => {
+    alertsFiltersRef.current = alertsFilters
+  }, [alertsFilters])
+  const alertsFiltersKey = JSON.stringify(alertsFilters)
+
+  const feedGroupsKey = JSON.stringify(alertsSettings?.feedDisabledGroups ?? [])
+  const feedGroupsRef = useRef<string[]>([])
+  useEffect(() => {
+    feedGroupsRef.current = alertsSettings?.feedDisabledGroups ?? []
+  }, [alertsSettings])
+
   const [alerts, setAlerts] = useState<AlertItem[]>([])
   const [alertsLoading, setAlertsLoading] = useState(true)
   const [alertsHasMore, setAlertsHasMore] = useState(false)
@@ -149,9 +200,16 @@ export function App({
   // the list bottom, spins a tight fetch loop against a failing endpoint.
   const alertsRetryAt = useRef(0)
 
+  // Runs once the settings have loaded (the filters come from them), and again whenever
+  // the filters change — the server owns filtering, so a change means a fresh backfill.
   useEffect(() => {
+    if (!alertsSettings) return
     let cancelled = false
-    void fetchAlertsPage().then((page) => {
+    setAlerts([])
+    setAlertsLoading(true)
+    setAlertsHasMore(false)
+    alertsLastId.current = undefined
+    void fetchAlertsPage(undefined, alertsFiltersRef.current).then((page) => {
       if (cancelled || !page) {
         if (!cancelled) setAlertsLoading(false)
         return
@@ -164,13 +222,14 @@ export function App({
     return () => {
       cancelled = true
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the parsed filters
+  }, [alertsSettings !== null && alertsFiltersKey])
 
   const loadMoreAlerts = useCallback(() => {
     const lastId = alertsLastId.current
     if (!lastId || Date.now() < alertsRetryAt.current) return
     setAlertsLoadingMore(true)
-    void fetchAlertsPage(lastId).then((page) => {
+    void fetchAlertsPage(lastId, alertsFiltersRef.current).then((page) => {
       setAlertsLoadingMore(false)
       if (!page) {
         alertsRetryAt.current = Date.now() + 30_000
@@ -218,8 +277,13 @@ export function App({
   useEffect(() => {
     if (panelView !== 'feed' || !panelEnabled) return
     let cancelled = false
+    // A groups change re-keys this effect: start over, the server owns membership.
+    setFeedItems([])
+    setFeedLoading(true)
+    setFeedHasMore(false)
+    feedLastId.current = undefined
     const load = () =>
-      void fetchFeedPage().then((page) => {
+      void fetchFeedPage(undefined, feedGroupsRef.current).then((page) => {
         if (cancelled) return
         setFeedLoading(false)
         if (!page) return
@@ -233,13 +297,14 @@ export function App({
       cancelled = true
       window.clearInterval(id)
     }
-  }, [panelView, panelEnabled])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the disabled groups
+  }, [panelView, panelEnabled, feedGroupsKey])
 
   const loadMoreFeed = useCallback(() => {
     const lastId = feedLastId.current
     if (!lastId || Date.now() < feedRetryAt.current) return
     setFeedLoadingMore(true)
-    void fetchFeedPage(lastId).then((page) => {
+    void fetchFeedPage(lastId, feedGroupsRef.current).then((page) => {
       setFeedLoadingMore(false)
       if (!page) {
         feedRetryAt.current = Date.now() + 30_000
@@ -270,6 +335,8 @@ export function App({
       onAlert: (payload) => {
         const item = parseAlert(payload)
         if (!item) return
+        // The socket topic is unfiltered; re-apply the backfill's bounds to live frames.
+        if (!passesAlertsFilters(item, alertsFiltersRef.current)) return
         markFresh(item.id)
         // fomo's own ding, for live alerts only — backfill stays silent (see lib/sound.ts).
         if (soundRef.current) dingForAlert(item.createdAtMs)
@@ -400,6 +467,10 @@ export function App({
               feedHasMore={feedHasMore}
               feedLoadingMore={feedLoadingMore}
               onLoadMoreFeed={loadMoreFeed}
+              feedDisabledGroups={alertsSettings.feedDisabledGroups}
+              alertsFilters={alertsSettings.alertsFilters}
+              onFeedGroupsChange={changeFeedGroups}
+              onAlertsFiltersChange={changeAlertsFilters}
               onOpen={onOpen}
               onOpenToken={open}
             />

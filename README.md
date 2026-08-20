@@ -26,7 +26,10 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] FOMO Panel: a side rail switching between fomo's Alerts (followed-traders activity),
       the user's Watchlist, and fomo's social Feed — the view dropdown remembers its choice
       per tab; side and visibility set in the toolbar popup, width dragged on the panel's
-      edge; fomo's alert ding replicated for live alerts with a popup toggle
+      edge; fomo's alert ding replicated for live alerts with a popup toggle. Both live views
+      carry fomo's own filters: the Feed's eight type groups, and the Alerts' trade-size /
+      portfolio / market-cap bounds (fomo's $1k trade-size default), re-applied to live
+      socket frames where the fields exist
 - [x] Bottom bar: fomo's own footer recreated one-to-one — majors, watchlist ticker, status dot
 - [x] Holdings bar: the account's open positions under the top bar, Axiom-style chips
 - [x] Chain identifiers on column cards, using fomo's own chain glyph tiles

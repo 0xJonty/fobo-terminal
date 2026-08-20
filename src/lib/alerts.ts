@@ -224,10 +224,27 @@ export interface AlertsPage {
   lastId?: string
 }
 
-/** GET /feed/tradingActivity — one backfill page, unfiltered (no threshold/equity params). */
-export async function fetchAlertsPage(lastId?: string): Promise<AlertsPage | null> {
+/**
+ * fomo's alerts filters, exactly as its own fetch builds them (the side panel chunk's `ws`):
+ * threshold is the min trade size in USD, minEquity the trader's min portfolio value (sent
+ * only when positive), and the market-cap bounds are plain min/max. All server-side — the
+ * response is already filtered.
+ */
+export interface AlertsFilters {
+  threshold?: number
+  minEquity?: number
+  minMarketCap?: number
+  maxMarketCap?: number
+}
+
+/** GET /feed/tradingActivity — one backfill page, filtered fomo's way. */
+export async function fetchAlertsPage(lastId?: string, filters?: AlertsFilters): Promise<AlertsPage | null> {
   const params = new URLSearchParams({ limit: String(PAGE_LIMIT) })
   if (lastId) params.set('lastId', lastId)
+  if (filters?.threshold !== undefined) params.set('threshold', String(filters.threshold))
+  if (filters?.minEquity !== undefined && filters.minEquity > 0) params.set('minEquity', String(filters.minEquity))
+  if (filters?.minMarketCap !== undefined) params.set('minMarketCap', String(filters.minMarketCap))
+  if (filters?.maxMarketCap !== undefined) params.set('maxMarketCap', String(filters.maxMarketCap))
   const raw = await fomoCall<{ items?: unknown[]; hasNextPage?: unknown }>(
     `/feed/tradingActivity?${params.toString()}`,
   )
@@ -240,6 +257,24 @@ export async function fetchAlertsPage(lastId?: string): Promise<AlertsPage | nul
     hasNextPage: raw.hasNextPage === true,
     lastId: typeof lastRaw?.id === 'string' ? lastRaw.id : undefined,
   }
+}
+
+/**
+ * Best-effort filter for LIVE frames — the socket topic is not parameterised, so the bounds
+ * the server applied to the backfill are re-applied here on the fields a frame carries.
+ * Trade size only constrains swaps/transfers (the kinds it means anything for); an unknown
+ * market cap passes rather than silently killing theses and milestones; minEquity is the
+ * trader's portfolio value, which frames do not carry, so it stays server-side only.
+ */
+export function passesAlertsFilters(item: AlertItem, filters: AlertsFilters): boolean {
+  if (filters.threshold !== undefined && item.kind === 'swap') {
+    if (item.usdAmount !== undefined && Math.abs(item.usdAmount) < filters.threshold) return false
+  }
+  if (item.marketCap !== undefined) {
+    if (filters.minMarketCap !== undefined && item.marketCap < filters.minMarketCap) return false
+    if (filters.maxMarketCap !== undefined && item.marketCap > filters.maxMarketCap) return false
+  }
+  return true
 }
 
 /** fomo's ordering: createdAt descending, id ascending as the tiebreak (its `Se`). */

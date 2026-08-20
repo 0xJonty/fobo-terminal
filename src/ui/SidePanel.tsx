@@ -2,8 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { AlertsPanel } from '~/ui/AlertsPanel'
 import { FeedView } from '~/ui/FeedView'
+import { PanelFilters } from '~/ui/PanelFilters'
 import { WatchlistView } from '~/ui/WatchlistView'
-import { ALERTS_MAX_WIDTH, ALERTS_MIN_WIDTH, PANEL_VIEWS, PANEL_VIEW_LABEL, type PanelView } from '~/lib/settings'
+import {
+  ALERTS_MAX_WIDTH,
+  ALERTS_MIN_WIDTH,
+  PANEL_VIEWS,
+  PANEL_VIEW_LABEL,
+  type AlertsFilterSettings,
+  type PanelView,
+} from '~/lib/settings'
 import type { AlertItem } from '~/lib/alerts'
 import type { FeedItem } from '~/lib/feed'
 import type { Token } from '~/types/token'
@@ -36,6 +44,10 @@ export function SidePanel({
   feedHasMore,
   feedLoadingMore,
   onLoadMoreFeed,
+  feedDisabledGroups,
+  alertsFilters,
+  onFeedGroupsChange,
+  onAlertsFiltersChange,
   onOpen,
   onOpenToken,
 }: {
@@ -60,6 +72,10 @@ export function SidePanel({
   feedHasMore: boolean
   feedLoadingMore: boolean
   onLoadMoreFeed: () => void
+  feedDisabledGroups: string[]
+  alertsFilters: AlertsFilterSettings
+  onFeedGroupsChange: (disabled: string[]) => void
+  onAlertsFiltersChange: (filters: AlertsFilterSettings) => void
   onOpen: (href: string) => void
   onOpenToken: (token: Token) => void
 }) {
@@ -158,6 +174,13 @@ export function SidePanel({
           )}
         </div>
         <span className="column-count">{count}</span>
+        <PanelFilters
+          view={view}
+          feedDisabledGroups={feedDisabledGroups}
+          alertsFilters={alertsFilters}
+          onFeedGroupsChange={onFeedGroupsChange}
+          onAlertsFiltersChange={onAlertsFiltersChange}
+        />
       </header>
 
       {view === 'alerts' && (
