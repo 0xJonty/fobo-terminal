@@ -1004,3 +1004,17 @@
   width: 1.5rem;
   background: linear-gradient(to left, var(--fobo-bg), transparent);
 }
+
+/*
+ * Chain identifier on the column cards: fomo's own chain glyph tiles (see ui/ChainIcon.tsx),
+ * overlaid on the avatar corner with fomo's badge geometry (bottom/right -3px) and given the
+ * page background as a keyline so the tile reads against any art behind it.
+ */
+.avatar-chain {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  color: var(--fobo-text-2);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--fobo-bg);
+}

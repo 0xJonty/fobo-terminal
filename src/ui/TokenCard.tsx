@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import { ChefHat, Droplet, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
+import { ChainIcon } from '~/ui/ChainIcon'
 import { Metric, riskClass } from '~/ui/Metric'
 import { age, count, percent, share, usd } from '~/lib/format'
 import type { Token } from '~/types/token'
@@ -92,6 +93,8 @@ export const TokenCard = memo(function TokenCard({
     >
       <span className="avatar-wrap">
         <Avatar token={token} />
+        {/* fomo's overlay geometry for avatar badges: bottom -3px, right -3px. */}
+        <ChainIcon networkId={token.networkId} size={14} className="avatar-chain" />
       </span>
 
       <span className="rowlines">
