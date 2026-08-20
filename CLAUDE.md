@@ -67,9 +67,25 @@ branch that suppressed the mount. No line at all means the content script never 
 - fomo's frontend is minified but readable: `curl fomo.family` lists `/assets/*.js` chunks
   (download all, grep). Endpoints appear as `"/v2/..."` literals; UI strings live in the i18n
   chunk — find the string, take its key, grep other chunks for the key to locate the component.
+- The index page names only ~40 chunks; the app has ~430. Get the rest by regexing
+  `[\w.-]+-<hash>.js` names out of downloaded chunks and fetching `/assets/<name>` (parallel
+  xargs curl). Known homes: `authenticated-*` (app shell: footer, status dot),
+  `tradeSettings-*` (pnl selectors, chain icon glyphs), `token-0uj*` (list endpoints,
+  watchlist, $2 dust split), `chains-*` (chain defs, market-cap formula), `manifest-*` (route
+  list), `i18n-*` (strings). Resolve minified imports via each chunk's `import{X as y}` header
+  against the source chunk's `export{...}` list.
+- Server facts (verified live): fomo serves its full app shell with 200 for ANY unknown path —
+  there is no server-side 404, so made-up paths still boot the SPA. CSP sends
+  `frame-ancestors 'self'` + `X-Frame-Options: DENY` — fomo cannot be iframed. The Privy
+  access JWT (`privy:token`) has a 60-minute TTL, refreshed by fomo's own app.
 - Live verification: `opencli browser <session> open|state|eval|screenshot` drives the user's
   real logged-in Chrome. `eval` runs in page context, so fetches to prod-api.fomo.family carry
   the real session — use it to confirm response shapes and computed styles before coding.
+- opencli quirks: the session tab resets to about:blank between uses — always `open` the URL
+  and sleep a few seconds before `eval`; `network` capture returns count:0 (dead); `tab new`
+  rejects chrome:// schemes, so the extension cannot be reloaded programmatically — the user
+  reloads at chrome://extensions. History experiments (bare replaceState, pushState+popstate)
+  are safe if you restore the URL afterwards; DOM node count is a usable cost proxy.
 - The terminal is away-by-default: it mounts only on paths marked in sessionStorage
   (`fobo:terminal-paths`) — the `/` entry's landing page, an explicit summon, or Back onto one.
   Everything else (profiles, coin pages, fomo-internal links) belongs to fomo. Do not regress to
@@ -85,6 +101,17 @@ branch that suppressed the mount. No line at all means the content script never 
   router never notices and the real page stays live underneath. The mask lifts on every handoff
   (navigate/Esc/unmount); a document that boots on the masked address is driven home
   (recoverFromMaskedLoad) so fomo never sits on its 404.
+
+## Session tooling quirks (this machine)
+
+- Output-compression hooks mangle multi-file grep results ("N matches in M files" interleaving)
+  and piped opencli output sometimes emits a spurious "claude native binary not installed"
+  error. Reliable pattern: redirect command output to a scratchpad file, then post-process with
+  a python3 heredoc.
+- zsh: an unquoted `=====` separator triggers equals-expansion ("==== not found") — quote it or
+  use python prints.
+- Broad regexes over the ~430-chunk mirror can hit the 120s Bash timeout — keep patterns
+  backtrack-safe (no nested `[^"']*` around alternations) or scan per-file in python.
 
 ## Git
 
