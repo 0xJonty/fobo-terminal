@@ -1,14 +1,13 @@
 /**
  * Toolbar popup. Owns the preferences: whether the terminal shows on fomo.family, and the
- * alerts panel's visibility, side and width. Writing chrome.storage is the whole job — the
- * background worker relays the terminal toggle; the alerts settings are watched by the
- * content script directly via chrome.storage.onChanged.
+ * FOMO Panel's visibility, side and alert sound. Width is NOT here — the panel's inner edge
+ * is a drag handle. Writing chrome.storage is the whole job — the background worker relays
+ * the terminal toggle; the panel settings are watched by the content script directly via
+ * chrome.storage.onChanged.
  */
 
 import {
   ALERTS_KEY,
-  ALERTS_MAX_WIDTH,
-  ALERTS_MIN_WIDTH,
   readAlertsSettings,
   sanitizeAlertsSettings,
   type AlertsSettings,
@@ -31,11 +30,7 @@ toggle.addEventListener('change', () => {
 const alertsToggle = document.getElementById('alerts-enabled') as HTMLInputElement
 const sideLeft = document.getElementById('side-left') as HTMLButtonElement
 const sideRight = document.getElementById('side-right') as HTMLButtonElement
-const widthSlider = document.getElementById('alerts-width') as HTMLInputElement
-const widthValue = document.getElementById('width-value') as HTMLSpanElement
-
-widthSlider.min = String(ALERTS_MIN_WIDTH)
-widthSlider.max = String(ALERTS_MAX_WIDTH)
+const soundToggle = document.getElementById('sound-enabled') as HTMLInputElement
 
 let settings: AlertsSettings = sanitizeAlertsSettings(undefined)
 
@@ -43,8 +38,7 @@ function reflect(): void {
   alertsToggle.checked = settings.enabled
   sideLeft.setAttribute('aria-pressed', String(settings.side === 'left'))
   sideRight.setAttribute('aria-pressed', String(settings.side === 'right'))
-  widthSlider.value = String(settings.width)
-  widthValue.textContent = `${settings.width}px`
+  soundToggle.checked = settings.sound
 }
 
 function save(patch: Partial<AlertsSettings>): void {
@@ -62,7 +56,7 @@ reflect()
 alertsToggle.addEventListener('change', () => save({ enabled: alertsToggle.checked }))
 sideLeft.addEventListener('click', () => save({ side: 'left' }))
 sideRight.addEventListener('click', () => save({ side: 'right' }))
-widthSlider.addEventListener('input', () => save({ width: Number(widthSlider.value) }))
+soundToggle.addEventListener('change', () => save({ sound: soundToggle.checked }))
 
 // Module scope, not script scope — keeps this file's names out of the global namespace.
 export {}

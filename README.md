@@ -23,8 +23,10 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Diff reducer matching fomo's `snapshot / new / update / remove` semantics
 - [x] Mobula Pulse enrichment for holder/risk metrics
 - [x] Three virtualised columns, Axiom-style cards, shadow-DOM isolation
-- [x] Alerts panel: fomo's followed-traders activity feed beside the columns, side and width
-      configurable from the toolbar popup
+- [x] FOMO Panel: a side rail switching between fomo's Alerts (followed-traders activity),
+      the user's Watchlist, and fomo's social Feed — the view dropdown remembers its choice
+      per tab; side and visibility set in the toolbar popup, width dragged on the panel's
+      edge; fomo's alert ding replicated for live alerts with a popup toggle
 - [x] Bottom bar: fomo's own footer recreated one-to-one — majors, watchlist ticker, status dot
 - [x] Holdings bar: the account's open positions under the top bar, Axiom-style chips
 - [x] Chain identifiers on column cards, using fomo's own chain glyph tiles

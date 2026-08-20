@@ -4,10 +4,11 @@ import { usd, percent } from '~/lib/format'
 import type { AlertItem, MultiAlert, SwapAlert, ThesisAlert, MilestoneAlert } from '~/lib/alerts'
 
 /**
- * The Alerts panel — fomo's "trading activity" feed of the traders the user follows, rendered
- * as a fourth rail beside the three token columns. Same visual language as the columns; row
- * content mirrors what fomo's own alert rows show (trader, action, amount, token, market cap),
- * and a row renders what its item has, never a guessed figure.
+ * The Alerts view — fomo's "trading activity" feed of the traders the user follows. One of
+ * the FOMO Panel's three views (see SidePanel.tsx, which owns the shell and the switcher);
+ * this renders only the scrolling list. Row content mirrors what fomo's own alert rows show
+ * (trader, action, amount, token, market cap), and a row renders what its item has, never a
+ * guessed figure.
  */
 
 /** Alert rows vary in height (theses carry text); this is the virtualiser's starting guess. */
@@ -28,7 +29,7 @@ function actionClass(action: 'buy' | 'sell' | 'receive' | 'send'): string {
 }
 
 /** Compact age from milliseconds: 12s / 4m / 3h / 2d. Same scale as the token cards. */
-function ageMs(createdAtMs: number, now: number): string {
+export function ageMs(createdAtMs: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - createdAtMs) / 1000))
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
@@ -38,7 +39,7 @@ function ageMs(createdAtMs: number, now: number): string {
   return `${Math.floor(hours / 24)}d`
 }
 
-function Avatar({ src, label }: { src?: string; label?: string }) {
+export function Avatar({ src, label }: { src?: string; label?: string }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [src])
   if (src && !failed) {
@@ -70,7 +71,7 @@ function TokenLine({
   )
 }
 
-function TraderName({
+export function TraderName({
   item,
   onOpenProfile,
 }: {
@@ -278,13 +279,7 @@ export function AlertsPanel({
   const openProfile = (handle: string) => onOpen(`/profile/${handle}`)
 
   return (
-    <section className="column alerts-panel" aria-label="Alerts">
-      <header className="column-header">
-        <h2 className="column-title">Alerts</h2>
-        <span className="column-count">{alerts.length}</span>
-      </header>
-
-      <div className="column-body" ref={scrollRef}>
+    <div className="column-body" ref={scrollRef}>
         {loading && alerts.length === 0 ? (
           <p className="column-empty">Loading alerts…</p>
         ) : alerts.length === 0 ? (
@@ -326,8 +321,7 @@ export function AlertsPanel({
             })}
           </div>
         )}
-        {loadingMore && <p className="alert-more">Loading more…</p>}
-      </div>
-    </section>
+      {loadingMore && <p className="alert-more">Loading more…</p>}
+    </div>
   )
 }

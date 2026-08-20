@@ -80,20 +80,6 @@
       .segment button[aria-pressed='true'] { background: #516af6; color: #fff; }
       .segment button:focus-visible { outline: 2px solid #516af6; outline-offset: 1px; }
 
-      /* Width slider. */
-      .width-row { display: flex; align-items: center; gap: 10px; flex: 1; }
-      input[type='range'] {
-        flex: 1;
-        accent-color: #516af6;
-        margin: 0;
-      }
-      .width-value {
-        font-size: 11px;
-        color: #9899a3;
-        font-variant-numeric: tabular-nums;
-        min-width: 44px;
-        text-align: right;
-      }
     </style>
   </head>
   <body>
@@ -113,30 +99,35 @@
 
       <div class="row">
         <div>
-          <p class="label">Alerts panel</p>
-          <p class="hint">Trading activity of traders you follow</p>
+          <p class="label">FOMO Panel</p>
+          <p class="hint">Alerts, watchlist and feed beside the columns</p>
         </div>
         <label class="switch">
-          <input id="alerts-enabled" type="checkbox" aria-label="Show the alerts panel" />
+          <input id="alerts-enabled" type="checkbox" aria-label="Show the FOMO Panel" />
           <span class="slider"></span>
         </label>
       </div>
 
       <div class="row">
         <p class="label">Side</p>
-        <div class="segment" role="group" aria-label="Alerts panel side">
+        <div class="segment" role="group" aria-label="FOMO Panel side">
           <button id="side-left" type="button" aria-pressed="false">Left</button>
           <button id="side-right" type="button" aria-pressed="true">Right</button>
         </div>
       </div>
 
       <div class="row">
-        <p class="label">Width</p>
-        <div class="width-row">
-          <input id="alerts-width" type="range" min="280" max="480" step="10" aria-label="Alerts panel width" />
-          <span class="width-value" id="width-value">340px</span>
+        <div>
+          <p class="label">Alert sound</p>
+          <p class="hint">fomo's ding for live alerts</p>
         </div>
+        <label class="switch">
+          <input id="sound-enabled" type="checkbox" aria-label="Play a sound for live alerts" />
+          <span class="slider"></span>
+        </label>
       </div>
+
+      <p class="hint">Resize the panel by dragging its inner edge.</p>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

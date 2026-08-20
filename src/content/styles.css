@@ -335,7 +335,116 @@
   min-height: 0;
   display: flex;
 }
-.alerts-panel { flex: 1; min-width: 0; }
+.alerts-panel {
+  flex: 1;
+  min-width: 0;
+  /* Anchors the edge drag handle and the view menu. */
+  position: relative;
+}
+
+/* ---------- FOMO Panel: view switcher + edge resize ---------- */
+
+.panelsel { position: relative; }
+
+.panelsel-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.panelsel-button:hover .column-title { color: var(--fobo-accent); }
+
+.panelsel-chevron {
+  color: var(--fobo-text-3);
+  transition: transform 0.12s ease-out;
+}
+.panelsel-chevron[data-open] { transform: rotate(180deg); }
+
+.panelsel-menu {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: -0.25rem;
+  z-index: 40;
+  min-width: 8rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--fobo-surface);
+  border: 1px solid var(--fobo-border-soft);
+  border-radius: 0.5rem;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+}
+
+.panelsel-option {
+  border: 0;
+  background: transparent;
+  color: var(--fobo-text-2);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+.panelsel-option:hover { background: var(--fobo-surface-2); color: var(--fobo-text); }
+.panelsel-option[data-on] { color: var(--fobo-accent); }
+
+/*
+ * The drag handle rides the panel's inner edge (the one facing the columns). A slim hit
+ * area with a hover affordance; the width bounds live in settings.ts, same as the old
+ * popup slider they replaced.
+ */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 30;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-resize[data-side='right'] { left: -3px; }
+.panel-resize[data-side='left'] { right: -3px; }
+.panel-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s ease-out;
+}
+.panel-resize:hover::after,
+.panel-resize:active::after { background: var(--fobo-accent); }
+
+/* ---------- feed posts (fomo's own pinned recaps) ---------- */
+
+.feed-post { min-width: 0; }
+
+.feed-post-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.feed-post-body { white-space: pre-wrap; }
+
+.feed-post-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--fobo-accent);
+  font: inherit;
+  cursor: pointer;
+}
+.feed-post-link:hover { text-decoration: underline; }
 
 /* ---------- alert rows ---------- */
 

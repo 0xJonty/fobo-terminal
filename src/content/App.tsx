@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertsPanel } from '~/ui/AlertsPanel'
 import { BottomBar } from '~/ui/BottomBar'
 import { Column } from '~/ui/Column'
 import { HoldingsBar } from '~/ui/HoldingsBar'
+import { SidePanel } from '~/ui/SidePanel'
 import { TopBar } from '~/ui/TopBar'
 import { fetchAlertsPage, mergeAlerts, parseAlert, type AlertItem } from '~/lib/alerts'
+import { fetchFeedPage, mergeFeed, type FeedItem } from '~/lib/feed'
+import { dingForAlert, unlockAudio } from '~/lib/sound'
+import { WATCHLIST_POLL_MS, fetchWatchlistTokens } from '~/lib/watchlist'
 import {
   applyPrefs,
   defaultAllPrefs,
@@ -18,7 +21,15 @@ import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { metricsFor, warm } from '~/lib/mobula'
 import { LIST_KEYS, LIST_LABEL, type ListKey } from '~/lib/protocol'
-import { readAlertsSettings, watchAlertsSettings, type AlertsSettings } from '~/lib/settings'
+import {
+  readAlertsSettings,
+  readPanelView,
+  saveAlertsSettings,
+  savePanelView,
+  watchAlertsSettings,
+  type AlertsSettings,
+  type PanelView,
+} from '~/lib/settings'
 import { tokenKey, type Token } from '~/types/token'
 
 type Lists = Record<ListKey, Token[]>
@@ -84,12 +95,47 @@ export function App({
     )
   }, [])
 
-  /* ---- alerts panel: settings, backfill, live feed ---- */
+  /* ---- FOMO Panel: settings, view, backfill, live feeds ---- */
 
   const [alertsSettings, setAlertsSettings] = useState<AlertsSettings | null>(null)
   useEffect(() => {
     void readAlertsSettings().then(setAlertsSettings)
     return watchAlertsSettings(setAlertsSettings)
+  }, [])
+  const panelEnabled = alertsSettings?.enabled === true
+
+  // The sound preference must reach the socket callback without re-running the socket
+  // effect; a ref carries the latest value across renders.
+  const soundRef = useRef(true)
+  useEffect(() => {
+    soundRef.current = alertsSettings?.sound !== false
+  }, [alertsSettings])
+
+  // AudioContext creation is gesture-gated by the browser; any pointerdown unlocks it.
+  useEffect(() => {
+    window.addEventListener('pointerdown', unlockAudio, { capture: true })
+    return () => window.removeEventListener('pointerdown', unlockAudio, { capture: true })
+  }, [])
+
+  // The chosen view is tab-session state — it survives refreshes of this tab.
+  const [panelView, setPanelView] = useState<PanelView>(readPanelView)
+  const changeView = useCallback((view: PanelView) => {
+    setPanelView(view)
+    savePanelView(view)
+  }, [])
+
+  // Edge-drag resize: live moves only touch state; the commit on release persists, so the
+  // storage watcher's echo always carries the value already rendered.
+  const changeWidth = useCallback((width: number) => {
+    setAlertsSettings((current) => (current ? { ...current, width } : current))
+  }, [])
+  const commitWidth = useCallback((width: number) => {
+    setAlertsSettings((current) => {
+      if (!current) return current
+      const next = { ...current, width }
+      saveAlertsSettings(next)
+      return next
+    })
   }, [])
 
   const [alerts, setAlerts] = useState<AlertItem[]>([])
@@ -136,6 +182,75 @@ export function App({
     })
   }, [])
 
+  /* ---- watchlist view: fomo's own ids + row data, polled on fomo's cadence ---- */
+
+  const [watchTokens, setWatchTokens] = useState<Token[] | null>(null)
+  const [watchLoading, setWatchLoading] = useState(false)
+  useEffect(() => {
+    if (panelView !== 'watchlist' || !panelEnabled) return
+    let cancelled = false
+    setWatchLoading(true)
+    const load = () =>
+      void fetchWatchlistTokens().then((tokens) => {
+        if (cancelled) return
+        setWatchLoading(false)
+        // A failed refresh keeps the last good list on screen rather than blanking it.
+        if (tokens !== null) setWatchTokens(tokens)
+        else setWatchTokens((current) => current)
+      })
+    load()
+    const id = window.setInterval(load, WATCHLIST_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [panelView, panelEnabled])
+
+  /* ---- feed view: first page + slow refresh + demand paging, like the alerts ---- */
+
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([])
+  const [feedLoading, setFeedLoading] = useState(true)
+  const [feedHasMore, setFeedHasMore] = useState(false)
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false)
+  const feedLastId = useRef<string | undefined>(undefined)
+  const feedRetryAt = useRef(0)
+
+  useEffect(() => {
+    if (panelView !== 'feed' || !panelEnabled) return
+    let cancelled = false
+    const load = () =>
+      void fetchFeedPage().then((page) => {
+        if (cancelled) return
+        setFeedLoading(false)
+        if (!page) return
+        feedLastId.current = feedLastId.current ?? page.lastId
+        setFeedItems((current) => mergeFeed(current, page.items))
+        setFeedHasMore((had) => had || page.hasMore)
+      })
+    load()
+    const id = window.setInterval(load, 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [panelView, panelEnabled])
+
+  const loadMoreFeed = useCallback(() => {
+    const lastId = feedLastId.current
+    if (!lastId || Date.now() < feedRetryAt.current) return
+    setFeedLoadingMore(true)
+    void fetchFeedPage(lastId).then((page) => {
+      setFeedLoadingMore(false)
+      if (!page) {
+        feedRetryAt.current = Date.now() + 30_000
+        return
+      }
+      feedLastId.current = page.lastId ?? feedLastId.current
+      setFeedItems((current) => mergeFeed(current, page.items))
+      setFeedHasMore(page.hasMore)
+    })
+  }, [])
+
   // One socket, all list topics plus the alerts feed. See lib/fomoSocket.ts for why we
   // connect rather than observe.
   useEffect(() => {
@@ -156,6 +271,8 @@ export function App({
         const item = parseAlert(payload)
         if (!item) return
         markFresh(item.id)
+        // fomo's own ding, for live alerts only — backfill stays silent (see lib/sound.ts).
+        if (soundRef.current) dingForAlert(item.createdAtMs)
         setAlerts((current) => mergeAlerts(current, [item]))
       },
     })
@@ -181,8 +298,10 @@ export function App({
     for (const key of LIST_KEYS) {
       for (const token of lists[key].slice(0, MAX_ROWS)) ids.add(token.networkId)
     }
+    // Watchlist chains warm too, so its cards can carry the same holder metrics.
+    for (const token of watchTokens ?? []) ids.add(token.networkId)
     return [...ids].sort().join(',')
-  }, [lists])
+  }, [lists, watchTokens])
 
   useEffect(() => {
     if (!networkIds) return
@@ -230,6 +349,16 @@ export function App({
     } satisfies Lists
   }, [lists, enrichStamp, colPrefs])
 
+  // Same left join for the watchlist cards: fomo owns the list, Mobula only decorates.
+  const watchEnriched = useMemo(() => {
+    void enrichStamp
+    if (watchTokens === null) return null
+    return watchTokens.map((token) => {
+      const metrics = metricsFor(token.key, token.networkId)
+      return metrics ? { ...token, metrics } : token
+    })
+  }, [watchTokens, enrichStamp])
+
   const open = useCallback(
     (token: Token) => {
       // Navigation mechanics (client-side pushState with a full-load fallback) and the handoff
@@ -251,14 +380,28 @@ export function App({
       <div className="main" data-alerts-side={alertsSettings?.enabled ? alertsSettings.side : undefined}>
         {alertsSettings?.enabled && (
           <div className="alerts-slot" style={{ width: alertsSettings.width }}>
-            <AlertsPanel
+            <SidePanel
+              view={panelView}
+              onViewChange={changeView}
+              side={alertsSettings.side}
+              width={alertsSettings.width}
+              onWidthChange={changeWidth}
+              onWidthCommit={commitWidth}
               alerts={alerts}
-              loading={alertsLoading}
-              hasMore={alertsHasMore}
-              loadingMore={alertsLoadingMore}
+              alertsLoading={alertsLoading}
+              alertsHasMore={alertsHasMore}
+              alertsLoadingMore={alertsLoadingMore}
               freshKeys={freshKeys}
-              onLoadMore={loadMoreAlerts}
+              onLoadMoreAlerts={loadMoreAlerts}
+              watchlist={watchEnriched}
+              watchlistLoading={watchLoading}
+              feed={feedItems}
+              feedLoading={feedLoading}
+              feedHasMore={feedHasMore}
+              feedLoadingMore={feedLoadingMore}
+              onLoadMoreFeed={loadMoreFeed}
               onOpen={onOpen}
+              onOpenToken={open}
             />
           </div>
         )}
