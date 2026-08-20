@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertsPanel } from '~/ui/AlertsPanel'
 import { BottomBar } from '~/ui/BottomBar'
 import { Column } from '~/ui/Column'
+import { HoldingsBar } from '~/ui/HoldingsBar'
 import { TopBar } from '~/ui/TopBar'
 import { fetchAlertsPage, mergeAlerts, parseAlert, type AlertItem } from '~/lib/alerts'
 import { currentUser } from '~/lib/fomoApi'
@@ -205,6 +206,8 @@ export function App({
   return (
     <div className="shell">
       <TopBar onNavigate={onOpen} onDeposit={onDeposit} />
+
+      <HoldingsBar onNavigate={onOpen} />
 
       <div className="main" data-alerts-side={alertsSettings?.enabled ? alertsSettings.side : undefined}>
         {alertsSettings?.enabled && (

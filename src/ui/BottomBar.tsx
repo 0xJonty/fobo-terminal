@@ -7,6 +7,7 @@ import {
   type AppStatus,
 } from '~/lib/fomoApi'
 import { tickerPrice, usd } from '~/lib/format'
+import { PercentChange } from '~/ui/PercentChange'
 import { tokenKey, type Token } from '~/types/token'
 
 /**
@@ -59,19 +60,6 @@ const STABLE_PHRASES = [
 
 const STATUS_LABEL = { STABLE: 'Stable', MODERATE: 'Minor issues', SEVERE: 'Major issues' } as const
 const STATUS_TONE = { STABLE: 'green', MODERATE: 'yellow', SEVERE: 'red' } as const
-
-/** fomo's PercentChange, ▲/▼ + |change|% to two decimals; zero renders "--" in grey. */
-function PercentChange({ change }: { change: number | undefined }) {
-  const value = change ?? 0
-  const rounded = Number(value.toFixed(2))
-  const tone = !rounded ? 'flat' : rounded > 0 ? 'up' : 'down'
-  return (
-    <span className="ticker-change" data-tone={tone}>
-      <span className="ticker-caret">{rounded < 0 ? '▼' : '▲'}</span>
-      <span className="ticker-pct">{change ? `${Math.abs(value).toFixed(2)}%` : '--'}</span>
-    </span>
-  )
-}
 
 function TickerItem({ token, onNavigate }: { token: Token; onNavigate: (href: string) => void }) {
   // fomo's rule: market cap only inside (0, $10B] and never for the majors; otherwise price.

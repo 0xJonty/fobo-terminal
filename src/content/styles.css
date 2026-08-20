@@ -926,3 +926,81 @@
 @media (prefers-reduced-motion: reduce) {
   .ticker-dot-ping { animation: none; }
 }
+
+/* ----------------------------------------------------------------------------
+ * Holdings bar — Axiom Pulse's holdings strip (28px row, 24px chips: 15px icon,
+ * symbol, value, pnl percent, right-edge fade), redrawn in fomo's palette.
+ * Sits between the top bar and the columns; absent entirely when empty.
+ * ------------------------------------------------------------------------- */
+
+.holdbar {
+  position: relative;
+  flex-shrink: 0;
+  height: 1.75rem;
+  margin: -0.375rem -0.75rem 0;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--fobo-border-soft);
+  opacity: 0.85;
+  transition: opacity 0.15s ease-out;
+}
+.holdbar:hover { opacity: 1; }
+
+.holdbar-scroll {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.holdbar-scroll::-webkit-scrollbar { display: none; }
+
+.holdbar-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  flex-shrink: 0;
+  border-radius: 0.25rem;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  transition: background-color 0.15s;
+}
+.holdbar-chip:hover { background: var(--fobo-border-soft); }
+
+.holdbar-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 0.25rem;
+  object-fit: cover;
+}
+
+.holdbar-symbol {
+  font-weight: 500;
+  color: var(--fobo-text-2);
+  white-space: nowrap;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holdbar-value {
+  font-weight: 500;
+  color: var(--fobo-text-3);
+  white-space: nowrap;
+}
+
+.holdbar-fade {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1.5rem;
+  background: linear-gradient(to left, var(--fobo-bg), transparent);
+}

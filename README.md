@@ -26,6 +26,7 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
 - [x] Alerts panel: fomo's followed-traders activity feed beside the columns, side and width
       configurable from the toolbar popup
 - [x] Bottom bar: fomo's own footer recreated one-to-one — majors, watchlist ticker, status dot
+- [x] Holdings bar: the account's open positions under the top bar, Axiom-style chips
 - [ ] Manual verification in Chrome
 - [ ] Per-column filters and sort
 - [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)
@@ -60,6 +61,16 @@ cap under $10B shown as MC, otherwise price — fomo's own display rule), and on
 status dot (`status.fomo.family`), Privacy/Terms/Help, and the X/Discord icons. Prices refresh
 every minute and status every five, matching fomo's intervals. The star beside a watchlist entry
 un-stars it via the same `DELETE /watchlist` call fomo makes.
+
+### Holdings bar
+
+A slim strip under the top bar — modelled on Axiom Pulse's holdings bar, drawn in fomo's palette —
+showing every token the account currently holds: icon, symbol, current value
+(amount x fomo's price), and the trade's PnL percent using fomo's own open-position arithmetic
+(realized + unrealized over cost basis, from `GET /v2/users/:id/balances`, the endpoint fomo's
+positions list reads). USDC cash rows are not holdings; unpriceable rows are dropped. Sorted by
+value, polled on fomo's 10s header cadence, absent entirely when there is nothing to show.
+Clicking a chip opens the token on fomo.
 
 ### Scope limits
 

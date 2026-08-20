@@ -143,6 +143,7 @@ interface BalanceRow {
     currentRealizedPnlUsd?: unknown
     humanAmountRemaining?: unknown
     averageEntryPriceUsd?: unknown
+    currentCostBasisUsd?: unknown
   }
 }
 
@@ -150,6 +151,25 @@ interface BalancesPayload {
   balances?: unknown[]
   otherPnl?: unknown
   livePerpPnl?: unknown
+}
+
+/**
+ * One /balances response feeds both the header numbers and the holdings bar, which poll on the
+ * same 10s cadence. A short cache turns those concurrent reads into one request — the way
+ * fomo's own react-query layer dedupes them.
+ */
+let balancesCache: { at: number; userId: string; payload: BalancesPayload } | null = null
+const BALANCES_TTL_MS = 5_000
+
+async function fetchBalances(userId: string): Promise<BalancesPayload | null> {
+  const now = Date.now()
+  if (balancesCache && balancesCache.userId === userId && now - balancesCache.at < BALANCES_TTL_MS) {
+    return balancesCache.payload
+  }
+  const raw = await call<BalancesPayload>(`/v2/users/${encodeURIComponent(userId)}/balances`)
+  if (!raw) return null
+  balancesCache = { at: now, userId, payload: raw }
+  return raw
 }
 
 /** fomo's blended entry price for an open trade (its `Dr`): swaps and transfers, weighted. */
@@ -198,7 +218,7 @@ async function snapshotPnl24hAgo(userId: string): Promise<number | null> {
  *    minus the pnl recorded in the snapshot from 24 hours ago.
  */
 export async function headerNumbers(userId: string): Promise<HeaderNumbers | null> {
-  const raw = await call<BalancesPayload>(`/v2/users/${encodeURIComponent(userId)}/balances`)
+  const raw = await fetchBalances(userId)
   if (!raw || !Array.isArray(raw.balances)) return null
 
   let cash = 0
@@ -241,6 +261,93 @@ export async function headerNumbers(userId: string): Promise<HeaderNumbers | nul
     portfolioUsd: portfolio,
     change24hUsd: reference === null ? undefined : livePnl - reference,
   }
+}
+
+/* ---------- holdings (per-position value + pnl) ---------- */
+
+export interface Holding {
+  token: Token
+  /** Human token amount held (shiftedBalance). */
+  amount: number
+  /** amount x priceUSD — the same figure fomo's positions list shows. */
+  valueUsd: number
+  /** Realized + unrealized, fomo's own selector. Absent when the row carries no trade data. */
+  pnlUsd?: number
+  /** Fraction (0.05 === +5%), pnl / cost basis. Absent when the cost basis is zero. */
+  pnlPercent?: number
+}
+
+/**
+ * fomo's open-position pnl, lifted verbatim from its bundle (tradeSettings chunk):
+ * an activeTrade prices against the blended entry (swaps + transfers, weighted) over the
+ * trade's total cost basis; otherwise the userToken aggregate prices against
+ * averageEntryPriceUsd over currentCostBasisUsd. Percentage is null at zero cost basis.
+ */
+function positionPnl(
+  row: BalanceRow,
+  price: number,
+): { pnlUsd: number; pnlPercent?: number } | null {
+  const trade = row.activeTrade
+  if (trade) {
+    const swapOpen = num(trade.sumSwapOpen) ?? 0
+    const transferIn = num(trade.sumTransferIn) ?? 0
+    const costBasis =
+      swapOpen * (num(trade.avgEntryPrice) ?? 0) + transferIn * (num(trade.avgTransferInPrice) ?? 0)
+    const unrealized = (price - tradeEntryPrice(trade)) * (num(trade.humanTokenAmount) ?? 0)
+    const pnlUsd = (num(trade.realizedPnlUsd) ?? 0) + unrealized
+    return { pnlUsd, pnlPercent: costBasis === 0 ? undefined : pnlUsd / costBasis }
+  }
+
+  const ut = row.userToken
+  if (ut) {
+    const costBasis = num(ut.currentCostBasisUsd)
+    const unrealized =
+      (num(ut.humanAmountRemaining) ?? 0) * (price - (num(ut.averageEntryPriceUsd) ?? 0))
+    const pnlUsd = (num(ut.currentRealizedPnlUsd) ?? 0) + unrealized
+    return {
+      pnlUsd,
+      pnlPercent: costBasis === undefined || costBasis === 0 ? undefined : pnlUsd / costBasis,
+    }
+  }
+  return null
+}
+
+/**
+ * The account's current token holdings, from GET /v2/users/:id/balances — the endpoint fomo's
+ * own positions list reads. Same row filter as theirs: the Solana USDC cash row and the
+ * per-chain USDC rows are not positions. Rows fobo cannot price or identify are dropped,
+ * never padded. Sorted by value, largest first.
+ */
+export async function holdings(userId: string): Promise<Holding[] | null> {
+  const raw = await fetchBalances(userId)
+  if (!raw || !Array.isArray(raw.balances)) return null
+
+  const out: Holding[] = []
+  for (const item of raw.balances) {
+    if (typeof item !== 'object' || item === null) continue
+    const row = item as BalanceRow & { tokenFilterResult?: unknown }
+
+    const address = row.balance?.tokenAddress
+    const amount = num(row.balance?.shiftedBalance)
+    if (typeof address !== 'string' || amount === undefined || amount <= 0) continue
+    if (row.balance?.tokenId === USDC_SOL_TOKEN_ID) continue
+    if (EVM_USDC.has(foldAddress(address))) continue
+
+    const token = fromFomoRow(row.tokenFilterResult)
+    if (!token || token.priceUSD === undefined) continue
+
+    const pnl = positionPnl(row, token.priceUSD)
+    out.push({
+      token,
+      amount,
+      valueUsd: amount * token.priceUSD,
+      pnlUsd: pnl?.pnlUsd,
+      pnlPercent: pnl?.pnlPercent,
+    })
+  }
+
+  out.sort((a, b) => b.valueUsd - a.valueUsd)
+  return out
 }
 
 /* ---------- trader search ---------- */
