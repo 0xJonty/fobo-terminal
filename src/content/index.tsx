@@ -31,14 +31,6 @@ const DISMISSED_KEY = 'fobo:dismissed'
  */
 const TERMINAL_KEY = 'fobo:terminal-paths'
 
-/**
- * fobo's own address. After a home-intent mount the URL underneath is moved here, so fomo swaps
- * the landing token page for its lightweight 404 view instead of streaming a chart nobody can
- * see behind the overlay. fomo serves its app shell for any unknown path (verified against
- * prod), so reloads and bookmarks of this path boot the session layer normally.
- */
-const PARKED_PATH = '/fobo-terminal'
-
 /** Bounded so a long session cannot grow this without limit. */
 const MARK_LIMIT = 20
 
@@ -72,9 +64,6 @@ function unmarkTerminal(path: string): void {
 }
 
 function isTerminalPath(path: string): boolean {
-  // The reserved path IS the terminal — fomo has nothing there — so it stays mountable
-  // forever: bookmarking fomo.family/fobo-terminal opens straight into fobo.
-  if (path === PARKED_PATH) return true
   return readMarks().includes(path)
 }
 
@@ -220,6 +209,42 @@ function unlockPageScroll(): void {
   savedOverflow = null
 }
 
+/**
+ * The second deliberate exception to "never touch fomo's tree": while the terminal is visible,
+ * fomo's page keeps rendering a live token page nobody can see — a TradingView chart and its
+ * subscriptions were most of the extension's runtime cost. An isolated-world script cannot
+ * (and should not) stop fomo's JS, but content-visibility skips the layout, paint and raster
+ * work for its whole tree while leaving state, sockets and React untouched. Inline styles are
+ * saved and restored verbatim, exactly like the scroll lock. On restore, a synthetic resize
+ * nudges fomo's charts and virtual lists to re-measure — ResizeObservers see zero sizes while
+ * content is skipped.
+ *
+ * Suppression covers fomo's top-level body children at the moment the terminal shows; nodes
+ * fomo portals in afterwards (modals, tooltips) stay live, which is what a handoff needs.
+ */
+let suppressedRender: { el: HTMLElement; value: string }[] | null = null
+
+function suppressPageRender(): void {
+  if (suppressedRender) return
+  const entries: { el: HTMLElement; value: string }[] = []
+  for (const el of document.body.children) {
+    if (!(el instanceof HTMLElement)) continue
+    if (el.id === HOST_ID || el.id === LAUNCHER_ID) continue
+    entries.push({ el, value: el.style.contentVisibility })
+    el.style.contentVisibility = 'hidden'
+  }
+  suppressedRender = entries
+}
+
+function restorePageRender(): void {
+  if (!suppressedRender) return
+  for (const { el, value } of suppressedRender) {
+    if (el.isConnected) el.style.contentVisibility = value
+  }
+  suppressedRender = null
+  window.dispatchEvent(new Event('resize'))
+}
+
 function unmount(): void {
   root?.unmount()
   root = null
@@ -227,6 +252,7 @@ function unmount(): void {
   host = null
   document.getElementById(HOST_ID)?.remove()
   unlockPageScroll()
+  restorePageRender()
 }
 
 /**
@@ -240,6 +266,7 @@ function hide(): void {
   if (!host) return
   host.dataset.foboHidden = ''
   unlockPageScroll()
+  restorePageRender()
   window.dispatchEvent(new Event('fobo:hidden'))
 }
 
@@ -274,10 +301,10 @@ function requestDeposit(): void {
     direct.click()
     return
   }
-  // Parked: fomo's 404 view under the terminal has no header, so the real button is not in
-  // the page. Drive fomo home — its `/` redirect boots a real page with the real header —
-  // then click the button once it renders. Dismissal comes first, so the landing page cannot
-  // remount the terminal over the deposit modal.
+  // No header in the page yet (fomo still booting, or a headerless view underneath). Drive
+  // fomo home — its `/` redirect boots a real page with the real header — then click the
+  // button once it renders. Dismissal comes first, so the landing page cannot remount the
+  // terminal over the deposit modal.
   dismiss()
   try {
     window.history.pushState(null, '', '/')
@@ -304,6 +331,7 @@ function render(): void {
   if (host) {
     delete host.dataset.foboHidden
     lockPageScroll()
+    suppressPageRender()
     return
   }
   if (document.getElementById(HOST_ID)) return
@@ -325,6 +353,7 @@ function render(): void {
   shadow.append(container)
   document.body.append(host)
   lockPageScroll()
+  suppressPageRender()
 
   root = createRoot(container)
   root.render(
@@ -363,28 +392,6 @@ function navigate(href: string): void {
   void sync()
 }
 
-/**
- * Move the URL under the mounted terminal to fobo's reserved path. fomo's router follows the
- * synthetic popstate and swaps the landing token page for its 404 view — measured live: ~5.9k
- * DOM nodes, two iframes and the TradingView chart down to ~66 nodes. replaceState, not
- * pushState: the landing page leaves history entirely, so Back walks from the terminal to
- * wherever the user came from, and a coin-click-then-Back returns here warm.
- *
- * Only home-intent mounts park. A summoned terminal (launcher, toolbar toggle) sits over a
- * page the user chose — replacing that page's URL would strand Esc on a 404.
- */
-function park(): void {
-  if (window.location.pathname === PARKED_PATH) return
-  try {
-    window.history.replaceState(null, '', PARKED_PATH)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  } catch {
-    return
-  }
-  markTerminal(PARKED_PATH)
-  lastPath = PARKED_PATH
-}
-
 /** Why fobo is or is not on screen. Surfaced so a mount failure is diagnosable from the console. */
 type Decision = 'mount' | 'marketing' | 'disabled' | 'dismissed' | 'away'
 
@@ -409,16 +416,11 @@ async function sync(): Promise<void> {
   if (decision === 'mount') {
     removeLauncher()
     render()
-    // Parking waits until fomo has left `/`: its router is still resolving the home redirect
-    // there, and swapping the URL mid-hydration risks a fight with it. The intent stays armed
-    // meanwhile — the redirect's landing page gets marked and this branch runs again. (This
-    // also fixes a bug where a mount that happened while still on `/` consumed the intent, so
-    // the redirect landed on an unmarked page and the terminal vanished.)
-    if (window.location.pathname !== '/') {
-      const fromHomeIntent = isPendingHome()
-      setPendingHome(false)
-      if (fromHomeIntent) park()
-    }
+    // The intent is spent only once fomo has left `/` — its home redirect is still resolving
+    // there, and clearing early left the redirect's landing page unmarked, so the terminal
+    // vanished out from under the mount. On `/` the intent stays armed; the landing page gets
+    // marked by the route watcher and this branch runs again.
+    if (window.location.pathname !== '/') setPendingHome(false)
     return
   }
 
@@ -583,11 +585,7 @@ function recordEntryIntent(): void {
   }
 
   const isHomeEntry =
-    (entry && entry.redirectCount > 0) ||
-    entryPath === '/' ||
-    entryPath === '' ||
-    entryPath === PARKED_PATH ||
-    cameFromRoot
+    (entry && entry.redirectCount > 0) || entryPath === '/' || entryPath === '' || cameFromRoot
 
   if (!isHomeEntry) {
     // A fresh navigation to a specific page is a request for that page: clear any stale intent
