@@ -18,6 +18,7 @@ out/
 *.tsbuildinfo
 
 # Packaged extension
+release/
 *.zip
 *.crx
 *.xpi

@@ -1,8 +1,8 @@
 {
   "name": "fobo-terminal",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Chrome extension that gives fomo.family an Axiom-Pulse-style three-column home screen",
+  "description": "A live three-column token terminal for fomo.family: Bonding, Graduated and Trending side by side, plus alerts, watchlist and feed.",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",
@@ -10,8 +10,9 @@
     "build": "npm run check && vite build",
     "check": "tsc --noEmit && npm run lint && npm test",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src manifest.config.ts vite.config.ts",
-    "test": "vitest run"
+    "lint": "eslint src scripts manifest.config.ts vite.config.ts",
+    "test": "vitest run",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",

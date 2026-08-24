@@ -4,6 +4,10 @@ A Chrome extension (Manifest V3) that gives [fomo.family](https://fomo.family/) 
 doesn't have: a dense, live, three-column token feed modelled on Axiom's Pulse page, rendered in
 fomo's own design language.
 
+Independent project — not affiliated with, endorsed by, or maintained by fomo.family. It uses
+fomo's web API under your own login; see [PRIVACY.md](PRIVACY.md) for exactly what it reads and
+where it goes.
+
 ## Why
 
 fomo has no home screen. After login `/` redirects to `/token`, which redirects to whichever token
@@ -171,6 +175,21 @@ dev-server path has been removed, for two independent reasons:
 
 If a reload ever lands on `Uncaught SyntaxError: Unexpected end of input`, Chrome read a chunk
 while the watcher was still writing it — rebuild finishes in under a second, so just reload again.
+
+## Publishing to the Chrome Web Store
+
+Everything the store asks for lives in [`store/LISTING.md`](store/LISTING.md): account setup
+(one-time fee, 2-Step Verification, trader declaration), the listing copy, the permission
+justifications and data-usage answers for the Privacy tab, and the test instructions for
+reviewers. The image uploads are in `store/` (icon, two 1280×800 screenshots, promo tiles), and
+[`PRIVACY.md`](PRIVACY.md) is the privacy policy to host at a public URL.
+
+```bash
+npm run package   # checks + build into ./dist, then release/fobo-terminal-<version>.zip
+```
+
+The zip has `manifest.json` at its root and no sourcemaps. Bump `version` in `package.json`
+before each upload — the store refuses a version it has already seen.
 
 ## How it works
 
