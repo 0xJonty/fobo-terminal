@@ -11,7 +11,7 @@ export default tseslint.config(
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
-      globals: { ...globals.browser, chrome: 'readonly' },
+      globals: { ...globals.browser, chrome: 'readonly', __FOBO_BUILD__: 'readonly' },
     },
     plugins: { 'react-hooks': reactHooks },
     rules: {

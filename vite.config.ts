@@ -106,6 +106,9 @@ export default defineConfig(({ mode }) => {
   assertSafeOutDir(outDir)
 
   return {
+    // Stamped onto the host element as data-fobo-build so a reload can be detected from the
+    // page (the shadow root is closed, so nothing inside it is inspectable from outside).
+    define: { __FOBO_BUILD__: JSON.stringify(Date.now().toString(36)) },
     plugins: [react(), crx({ manifest }), fixCrxIifeSourcemap()],
     resolve: {
       alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) },

@@ -530,6 +530,7 @@ function render(): void {
 
   host = document.createElement('div')
   host.id = HOST_ID
+  host.dataset.foboBuild = __FOBO_BUILD__
   // Closed: fomo's own scripts (and anything running in its world) cannot reach into the
   // terminal's DOM to read the search box or the balances, or synthesise clicks on the
   // header-menu items that drive fomo's Withdraw / Log out flows.
