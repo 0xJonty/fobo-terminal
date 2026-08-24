@@ -14,6 +14,7 @@
  * reach Mobula from the user's browser (see README).
  */
 
+import { countRequest } from '~/lib/host'
 import { tokenKey, type TokenMetrics } from '~/types/token'
 
 const ENDPOINT = 'https://fomo-api.mobula.io/api/2/pulse'
@@ -78,6 +79,7 @@ async function refresh(networkId: number): Promise<void> {
   if (!chainId) return
 
   const url = `${ENDPOINT}?assetMode=false&chainId=${encodeURIComponent(chainId)}&model=default`
+  countRequest('pulse')
   const response = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(TIMEOUT_MS) })
   if (!response.ok) throw new Error(`mobula pulse ${response.status}`)
 

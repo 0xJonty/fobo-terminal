@@ -25,6 +25,7 @@ import {
 } from '~/lib/columnPrefs'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
+import { setDiag } from '~/lib/host'
 import { metricsFor, warm } from '~/lib/mobula'
 import { LIST_KEYS, LIST_LABEL, type ListDiff, type ListKey } from '~/lib/protocol'
 import { currentUserStore, useCurrentUser, watchlistTokens } from '~/lib/session'
@@ -382,11 +383,14 @@ export function App({
     const socket = createFomoSocket({
       onStatus: (next) => {
         setStatus(next)
+        setDiag('socket', next)
         // The socket authenticating proves a JWT exists now — worth another try at the
         // current-user lookup if the first one raced Privy's boot.
         if (next === 'authenticated') currentUserStore.refresh()
       },
       onFrame: (at) => {
+        // The attribute write is throttled: frames arrive several times a second.
+        if (at - lastFrameAt.current > 1_000) setDiag('lastFrame', String(at))
         lastFrameAt.current = at
       },
       onDiff: (list, diff) => {
@@ -429,6 +433,10 @@ export function App({
   useEffect(() => {
     if (user) socketRef.current?.setAlertUser(user.id)
   }, [user])
+
+  useEffect(() => {
+    setDiag('active', String(active))
+  }, [active])
 
   // "Stale" is judged only while the terminal is on screen and the socket claims to be live.
   useEffect(() => {

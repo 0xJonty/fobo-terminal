@@ -8,6 +8,7 @@
  * socket uses, sent only to fomo's API, never persisted or logged.
  */
 
+import { countRequest } from '~/lib/host'
 import { SUPPORTED_CHAINS } from '~/lib/protocol'
 import { safeImageUrl } from '~/lib/url'
 import { chainSlug, fromFomoRow, tokenKey, type Token } from '~/types/token'
@@ -61,6 +62,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
     return null
   }
 
+  countRequest(path.split('?')[0]!.replace(/\/v2\/users\/[^/]+\//, '/v2/users/:id/'))
   let response: Response
   try {
     response = await fetch(BASE + path, {
@@ -575,6 +577,7 @@ export interface AppStatus {
  * polls it every 5 minutes for the little status dot.
  */
 export async function appStatus(): Promise<AppStatus | null> {
+  countRequest('status')
   let response: Response
   try {
     response = await fetch('https://status.fomo.family/prod')

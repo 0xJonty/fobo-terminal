@@ -16,3 +16,26 @@ export function isTerminalVisible(): boolean {
   const host = document.getElementById(HOST_ID)
   return host !== null && host.dataset.foboHidden === undefined
 }
+
+/* ---------- diagnostics on the host element ---------- */
+
+/**
+ * The shadow root is closed and content-script fetches never show up in the page's Resource
+ * Timing, so from outside (the opencli harness, a curious user in DevTools) the terminal is a
+ * black box. These attributes on the host are the deliberate window into it: per-kind request
+ * counters and the socket state. Strings only, cheap to write, nothing sensitive.
+ */
+const requestCounts: Record<string, number> = {}
+
+/** Count one outbound request of `kind` (e.g. "balances", "pulse"). */
+export function countRequest(kind: string): void {
+  requestCounts[kind] = (requestCounts[kind] ?? 0) + 1
+  const host = document.getElementById(HOST_ID)
+  if (host) host.dataset.foboRequests = JSON.stringify(requestCounts)
+}
+
+/** Publish a diagnostic value, e.g. setDiag('socket', 'authenticated'). */
+export function setDiag(key: string, value: string): void {
+  const host = document.getElementById(HOST_ID)
+  if (host) host.dataset[`fobo${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
+}
