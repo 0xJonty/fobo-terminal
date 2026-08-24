@@ -2,8 +2,9 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { crx } from '@crxjs/vite-plugin'
 import { fileURLToPath, URL } from 'node:url'
+import { existsSync, readdirSync } from 'node:fs'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import manifest from './manifest.config.ts'
 
 const SOURCEMAP_MARK = '//# sourceMappingURL='
@@ -79,12 +80,30 @@ function fixCrxIifeSourcemap(): Plugin {
   }
 }
 
+/**
+ * `emptyOutDir: true` on an env-supplied path is a footgun: one typo in .env.local and the next
+ * build wipes a user directory. Only a directory that is clearly ours — named `dist`, empty,
+ * or already holding a manifest.json from a previous build — is accepted.
+ */
+function assertSafeOutDir(outDir: string): void {
+  const abs = resolve(outDir)
+  if (basename(abs) === 'dist') return
+  if (!existsSync(abs)) return
+  const entries = readdirSync(abs)
+  if (entries.length === 0 || entries.includes('manifest.json')) return
+  throw new Error(
+    `Refusing to build into ${abs}: it is not named "dist", is not empty, and holds no manifest.json. ` +
+      'emptyOutDir would delete its contents — check FOBO_OUT_DIR.',
+  )
+}
+
 export default defineConfig(({ mode }) => {
   // Loaded from .env.local (gitignored) or the shell. Lets a WSL checkout build straight onto
   // the Windows filesystem so Chrome on Windows can load the unpacked extension, without
   // committing a machine-specific path. Defaults to a repo-local ./dist.
   const env = loadEnv(mode, process.cwd(), 'FOBO_')
   const outDir = process.env.FOBO_OUT_DIR ?? env.FOBO_OUT_DIR ?? 'dist'
+  assertSafeOutDir(outDir)
 
   return {
     plugins: [react(), crx({ manifest }), fixCrxIifeSourcemap()],
@@ -93,7 +112,11 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: 'chrome111',
-      sourcemap: true,
+      // Hidden: the .map files are still written for local debugging, but the emitted chunks
+      // carry no sourceMappingURL, so a packaged build does not ship readable source. This also
+      // means the chunks no longer END in a sourcemap comment, which is what tripped CRXJS's
+      // IIFE wrap — fixCrxIifeSourcemap stays as the safety net.
+      sourcemap: 'hidden',
       outDir,
       // Required by Vite when outDir sits outside the project root.
       emptyOutDir: true,

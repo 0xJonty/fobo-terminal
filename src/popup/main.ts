@@ -4,6 +4,10 @@
  * is a drag handle. Writing chrome.storage is the whole job — the background worker relays
  * the terminal toggle; the panel settings are watched by the content script directly via
  * chrome.storage.onChanged.
+ *
+ * Every write is read-modify-write against storage, not against a snapshot taken when the
+ * popup opened: the content script commits width, filters and feed groups on its own, and a
+ * stale snapshot used to clobber them the moment any switch here was flipped.
  */
 
 import {
@@ -41,10 +45,11 @@ function reflect(): void {
   soundToggle.checked = settings.sound
 }
 
-function save(patch: Partial<AlertsSettings>): void {
-  settings = sanitizeAlertsSettings({ ...settings, ...patch })
+async function save(patch: Partial<AlertsSettings>): Promise<void> {
+  const stored = await readAlertsSettings()
+  settings = sanitizeAlertsSettings({ ...stored, ...patch })
   reflect()
-  void chrome.storage.sync.set({ [ALERTS_KEY]: settings })
+  await chrome.storage.sync.set({ [ALERTS_KEY]: settings })
 }
 
 void readAlertsSettings().then((stored) => {
@@ -53,10 +58,18 @@ void readAlertsSettings().then((stored) => {
 })
 reflect()
 
-alertsToggle.addEventListener('change', () => save({ enabled: alertsToggle.checked }))
-sideLeft.addEventListener('click', () => save({ side: 'left' }))
-sideRight.addEventListener('click', () => save({ side: 'right' }))
-soundToggle.addEventListener('change', () => save({ sound: soundToggle.checked }))
+// Another writer (the terminal's own commits, another window's popup) changes the row here.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !(ALERTS_KEY in changes)) return
+  settings = sanitizeAlertsSettings(changes[ALERTS_KEY]?.newValue)
+  reflect()
+  if (ENABLED_KEY in changes) toggle.checked = changes[ENABLED_KEY]?.newValue !== false
+})
+
+alertsToggle.addEventListener('change', () => void save({ enabled: alertsToggle.checked }))
+sideLeft.addEventListener('click', () => void save({ side: 'left' }))
+sideRight.addEventListener('click', () => void save({ side: 'right' }))
+soundToggle.addEventListener('change', () => void save({ sound: soundToggle.checked }))
 
 // Module scope, not script scope — keeps this file's names out of the global namespace.
 export {}

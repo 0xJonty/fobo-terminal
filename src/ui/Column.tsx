@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ColumnControls } from '~/ui/ColumnControls'
 import { filtersActive, type ColumnPrefs } from '~/lib/columnPrefs'
+import { HIDDEN_EVENT } from '~/lib/host'
 import type { ListKey } from '~/lib/protocol'
 import { TokenCard } from '~/ui/TokenCard'
 import type { Token } from '~/types/token'
@@ -27,6 +28,7 @@ export function Column({
   tokens,
   total,
   loading,
+  stale,
   showBond,
   freshKeys,
   prefs,
@@ -39,6 +41,8 @@ export function Column({
   /** Rows in fomo's store for this list, before our filters and the render cap. */
   total: number
   loading: boolean
+  /** No socket frame for a while although the connection claims to be live. */
+  stale: boolean
   showBond: boolean
   freshKeys: ReadonlySet<string>
   prefs: ColumnPrefs
@@ -66,8 +70,8 @@ export function Column({
   // element, so without this the column came back frozen on stale rows, badged "paused".
   useEffect(() => {
     const release = () => setHovered(false)
-    window.addEventListener('fobo:hidden', release)
-    return () => window.removeEventListener('fobo:hidden', release)
+    window.addEventListener(HIDDEN_EVENT, release)
+    return () => window.removeEventListener(HIDDEN_EVENT, release)
   }, [])
 
   const virtualizer = useVirtualizer({
@@ -89,6 +93,11 @@ export function Column({
           {filtersActive(prefs) ? `${tokens.length}/${total}` : tokens.length}
         </span>
         {frozen && <span className="column-paused">paused</span>}
+        {stale && !frozen && (
+          <span className="column-paused column-stale" title="No data from fomo for a while — reconnecting">
+            stale
+          </span>
+        )}
         <ColumnControls list={list} prefs={prefs} onChange={onPrefsChange} />
       </header>
 

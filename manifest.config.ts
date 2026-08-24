@@ -16,9 +16,20 @@ export default defineManifest({
   permissions: ['storage'],
   host_permissions: [FOMO],
 
+  icons: {
+    16: 'src/assets/icon-16.png',
+    32: 'src/assets/icon-32.png',
+    48: 'src/assets/icon-48.png',
+    128: 'src/assets/icon-128.png',
+  },
+
   action: {
     default_title: 'fobo terminal',
     default_popup: 'src/popup/index.html',
+    default_icon: {
+      16: 'src/assets/icon-16.png',
+      32: 'src/assets/icon-32.png',
+    },
   },
 
   background: {

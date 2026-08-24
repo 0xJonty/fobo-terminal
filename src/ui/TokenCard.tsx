@@ -4,6 +4,7 @@ import { BondBar } from '~/ui/BondBar'
 import { ChainIcon } from '~/ui/ChainIcon'
 import { Metric, riskClass } from '~/ui/Metric'
 import { age, count, percent, share, usd } from '~/lib/format'
+import { tokenPath } from '~/lib/url'
 import type { Token } from '~/types/token'
 
 /**
@@ -34,6 +35,7 @@ function Avatar({ token }: { token: Token }) {
         alt=""
         loading="lazy"
         decoding="async"
+        referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
       />
     )
@@ -74,7 +76,7 @@ export const TokenCard = memo(function TokenCard({
   showBond: boolean
   onOpen: (token: Token) => void
 }) {
-  const href = `/tokens/${token.chain}/${token.address}`
+  const href = tokenPath(token.chain, token.address)
   // fomo reports change as a fraction; the formatter wants a percentage.
   const change24 = token.change24h === undefined ? undefined : token.change24h * 100
   const m = token.metrics

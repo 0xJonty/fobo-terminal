@@ -6,7 +6,12 @@
  * edge, not set in the popup.
  */
 
+import { debounce, withTimeout } from '~/lib/async'
+
 export const ALERTS_KEY = 'fobo:alerts'
+
+/** Same guard as the enabled flag: a hung storage read must not leave the panel unrendered. */
+const STORAGE_READ_TIMEOUT_MS = 1_000
 
 export const ALERTS_MIN_WIDTH = 280
 export const ALERTS_MAX_WIDTH = 560
@@ -86,21 +91,28 @@ export function sanitizeAlertsSettings(raw: unknown): AlertsSettings {
 /** Defaults when the extension context is gone (orphaned content script) or storage throws. */
 export async function readAlertsSettings(): Promise<AlertsSettings> {
   try {
-    const stored = await chrome.storage.sync.get(ALERTS_KEY)
+    const stored = await withTimeout(chrome.storage.sync.get(ALERTS_KEY), STORAGE_READ_TIMEOUT_MS, {})
     return sanitizeAlertsSettings(stored[ALERTS_KEY])
   } catch {
     return ALERTS_DEFAULT
   }
 }
 
-/** Fire-and-forget write; an orphaned context just means the preference does not persist. */
-export function saveAlertsSettings(settings: AlertsSettings): void {
+function writeAlertsSettings(settings: AlertsSettings): void {
   try {
-    void chrome.storage.sync.set({ [ALERTS_KEY]: settings })
+    chrome.storage.sync.set({ [ALERTS_KEY]: settings }).catch(() => {
+      /* quota or a context already gone — the preference just does not persist this time */
+    })
   } catch {
     /* context already gone */
   }
 }
+
+/**
+ * Debounced write, like the column prefs: the panel's filter boxes call this per keystroke,
+ * and chrome.storage.sync caps writes at 120/minute. The last value wins.
+ */
+export const saveAlertsSettings: (settings: AlertsSettings) => void = debounce(writeAlertsSettings, 400)
 
 /** Watch for popup changes. Returns an unsubscribe; a dead context returns a no-op. */
 export function watchAlertsSettings(onChange: (settings: AlertsSettings) => void): () => void {

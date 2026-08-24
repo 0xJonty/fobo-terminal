@@ -621,3 +621,46 @@ rule). Wire `npm test` and `npm run lint` into `npm run build`.
 
 **Benefits.** Protocol drift and reducer regressions are caught locally instead of as a blank
 column in production; the hook-dependency assumptions in `App.tsx` are actually enforced.
+
+---
+
+## Remediation status (2026-08-24)
+
+All findings addressed in the follow-up commit. Where a fix changed the design rather than a
+line, the new home is named so the entry above can be read against the code.
+
+| # | Status | Where |
+|---|---|---|
+| S1 | Fixed | `content/index.tsx` — `attachShadow({ mode: 'closed' })` |
+| S2 | Fixed | `content/index.tsx` `readMarks()` — only `/`-prefixed strings, capped to `MARK_LIMIT` on read |
+| S3 | Fixed | `lib/url.ts` — `tokenPath` / `profilePath` encode every segment; `navigate()` accepts only `sameOriginHref()` results, so the `location.assign` fallback can never leave fomo |
+| S4 | Fixed | `lib/url.ts` `safeImageUrl` applied at every parse boundary (`fromFomoRow`, `fromFlatRow`, `parseAlert`, `parseFeedItem`, `currentUser`, `searchUsers`); every `<img>` carries `referrerPolicy="no-referrer"` |
+| S5 | Fixed | README "Third parties" section; `lib/mobula.ts` logs one `console.warn` when a request cannot be sent |
+| S6 | Fixed | `content/index.tsx` — header-menu items must match exactly one candidate (href-bearing links preferred); `findDepositButton` likewise |
+| S7 | Fixed | `vite.config.ts` `assertSafeOutDir` — refuses a directory not named `dist`, not empty, and without a `manifest.json` |
+| S8 | Fixed | `vite.config.ts` `sourcemap: 'hidden'` (maps still written locally, no `sourceMappingURL` shipped) |
+| S9 | Fixed | `isLoggedIn` is a presence check; `onMessage` verifies `sender.id === chrome.runtime.id` |
+| P1 | Fixed | `lib/visibility.ts` (`isActive`, `useTerminalActive`, `useActiveInterval`) + `lib/resource.ts`; `content/index.tsx` dispatches `fobo:shown` / `fobo:hidden`. Every poller, both clocks, Mobula warming and the socket reducer (diffs queue while hidden, replay on show) pause when the terminal is hidden or the tab is backgrounded |
+| P2 | Fixed | `lib/mobula.ts` — `AbortSignal.timeout(15s)`, per-chain exponential backoff (30s → 10min), warming only while active |
+| P3 | Fixed | `content/index.tsx` `watchRoute` — Navigation API `currententrychange` listener, a settle re-check timer, and a 1s fallback poll (300ms only when the API is absent) |
+| P4 | Fixed | `lib/session.ts` — one shared `currentUser` store (retry until success), one `balances` resource feeding TopBar + HoldingsBar, one `ticker` + `status` resource for the bottom bar, one `watchlistTokens` resource; `fomoApi.ts` dedupes in-flight `/balances` and caches `/watchlist` for 5s |
+| P5 | Fixed | `content/App.tsx` — socket diffs batched per animation frame; per-list `useMemo` so one list's frame does not re-sort the others |
+| P6 | Fixed | `lib/listStore.ts` `STORE_CAP = 5 × MAX_ROWS` applied after every insert |
+| P7 | Fixed | `content/App.tsx` — `unlockAudio` only registered when the panel and sound are on, and only fires while the terminal is active |
+| F1 | Fixed | `ui/TopBar.tsx` — the `/` shortcut ignores hidden terminal, editable targets, modifiers and IME composition |
+| F2 | Fixed | `lib/session.ts` `currentUserStore` retries with backoff and is re-tried when the socket authenticates; App subscribes and calls `setAlertUser` when the user lands |
+| F3 | Fixed | `lib/fomoSocket.ts` — `error` frame closes the socket, 10s handshake deadline, 60s idle watchdog, reconnect on `online` / tab visible, `onFrame` feeds a "stale" badge in the column headers |
+| F4 | Fixed | `ui/PanelFilters.tsx` local draft committed on blur / Enter / 400ms idle; `settings.ts` `saveAlertsSettings` debounced 400ms; the backfill effect keeps the current list until the new page arrives |
+| F5 | Fixed | `popup/main.ts` — read-modify-write on every save, subscribes to `chrome.storage.onChanged` |
+| F6 | Fixed | `content/index.tsx` `suppressPageRender` — only body children with ≥100 descendants that are not live regions (verified live: fomo's `.desktop-content` is the only such child) |
+| F7 | Fixed | `lib/session.ts` `ticker` returns null (keeps the last strip) when `/watchlist` fails; `ui/BottomBar.tsx` rolls back an optimistic un-star that fomo refused |
+| F8 | Fixed | `ui/AlertsPanel.tsx` / `ui/FeedView.tsx` — rows are blocks with a stretched `<a class="alert-row-link">` underneath (middle-click / ctrl-click now open a new tab); trader names and post links are real `<a>` elements above it |
+| F9 | Fixed | `content/index.tsx` `recordEntryIntent` — a server redirect counts as home intent only without an external referrer |
+| F10 | Documented | README "Scope limits" explains the masked address and how to copy a shareable link |
+| F11 | Fixed | `lib/async.ts` `withTimeout` used by `readEnabled`, `readAlertsSettings`, `readColumnPrefs` |
+| F12 | Fixed | `lib/fomoApi.ts` tracks the last 401/403 (`isAuthFailing`); TopBar shows "Signed out of fomo" |
+| F13 | Fixed | `src/assets/icon-{16,32,48,128}.png`, wired into `icons` and `action.default_icon` |
+| F14 | Fixed | `lib/format.ts` `usd()` puts the sign before the symbol |
+| M1 | Fixed | README Status, What it does, Alerts panel, Scope limits and Build sections rewritten to match the code |
+| M2 | Fixed | `cacheStamp`, `.launcher` CSS and the unused `tradeUsd` parameter removed; `HOST_ID` lives in `lib/host.ts` |
+| M3 | Fixed | `eslint` (typescript-eslint + react-hooks) and `vitest` (44 tests across `listStore`, `columnPrefs`, `alerts`, `feed`, `format`, `url`) run via `npm run check`, which `npm run build` invokes first |

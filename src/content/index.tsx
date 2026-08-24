@@ -10,9 +10,10 @@ import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { App } from '~/content/App'
 import styles from '~/content/styles.css?inline'
+import { withTimeout } from '~/lib/async'
+import { HIDDEN_EVENT, HOST_ID, LAUNCHER_ID, SHOWN_EVENT } from '~/lib/host'
+import { sameOriginHref } from '~/lib/url'
 
-const HOST_ID = 'fobo-terminal-root'
-const LAUNCHER_ID = 'fobo-terminal-launcher'
 const ENABLED_KEY = 'fobo:enabled'
 
 /** Set when the user presses Esc or Close. Tab-scoped. */
@@ -62,7 +63,12 @@ function readMarks(): string[] {
     const raw = window.sessionStorage.getItem(TERMINAL_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : []
+    if (!Array.isArray(parsed)) return []
+    // sessionStorage is shared with fomo's own scripts: treat what comes back as a hint —
+    // only real paths, only the newest MARK_LIMIT of them.
+    return parsed
+      .filter((p): p is string => typeof p === 'string' && p.startsWith('/') && p.length < 512)
+      .slice(-MARK_LIMIT)
   } catch {
     return []
   }
@@ -135,12 +141,7 @@ function extensionAlive(): boolean {
 async function readEnabled(): Promise<boolean> {
   if (!extensionAlive()) return true
   try {
-    const stored = await Promise.race([
-      chrome.storage.sync.get(ENABLED_KEY),
-      new Promise<Record<string, unknown>>((resolve) =>
-        window.setTimeout(() => resolve({}), 1000),
-      ),
-    ])
+    const stored = await withTimeout<Record<string, unknown>>(chrome.storage.sync.get(ENABLED_KEY), 1000, {})
     return stored[ENABLED_KEY] !== false
   } catch {
     return true
@@ -154,8 +155,9 @@ async function readEnabled(): Promise<boolean> {
  */
 function isLoggedIn(): boolean {
   try {
+    // Presence only — the value itself is never needed beyond fomo's own "deprecated" marker.
     const token = window.localStorage.getItem('privy:refresh_token')
-    return typeof token === 'string' && token.startsWith('"') && token !== '"deprecated"'
+    return token !== null && token !== '"deprecated"'
   } catch {
     return false
   }
@@ -327,12 +329,24 @@ function unmaskTitle(): void {
  */
 let suppressedRender: { el: HTMLElement; value: string }[] | null = null
 
+/**
+ * Only fomo's app tree is worth suppressing, and it is the only body child big enough to
+ * matter (verified live: ~3,300 nodes against a handful for the mobile blocker and the Privy
+ * iframe). Small siblings — and anything that is or contains a live region, which is where
+ * toasts and status notices render — stay visible, so a trade confirmation or an error
+ * raised while the terminal is up is never hidden.
+ */
+const SUPPRESS_MIN_NODES = 100
+const LIVE_REGION = '[aria-live], [role="status"], [role="alert"], [role="log"], [data-sonner-toaster], [data-radix-portal]'
+
 function suppressPageRender(): void {
   if (suppressedRender) return
   const entries: { el: HTMLElement; value: string }[] = []
   for (const el of document.body.children) {
     if (!(el instanceof HTMLElement)) continue
     if (el.id === HOST_ID || el.id === LAUNCHER_ID) continue
+    if (el.matches(LIVE_REGION)) continue
+    if (el.querySelectorAll('*').length < SUPPRESS_MIN_NODES) continue
     entries.push({ el, value: el.style.contentVisibility })
     el.style.contentVisibility = 'hidden'
   }
@@ -374,7 +388,7 @@ function hide(): void {
   restorePageRender()
   unmaskTitle()
   unmaskUrl()
-  window.dispatchEvent(new Event('fobo:hidden'))
+  window.dispatchEvent(new Event(HIDDEN_EVENT))
 }
 
 function dismiss(): void {
@@ -390,12 +404,15 @@ function dismiss(): void {
  * nothing happens rather than something invented.
  */
 function findDepositButton(): HTMLButtonElement | null {
+  const matches: HTMLButtonElement[] = []
   for (const button of document.querySelectorAll<HTMLButtonElement>('button')) {
     if (button.textContent?.trim() !== 'Deposit more') continue
     if (button.closest(`#${HOST_ID}`)) continue
-    return button
+    matches.push(button)
   }
-  return null
+  // Exactly one candidate or nothing: a second "Deposit more" means fomo's header changed
+  // shape (or something was injected), and clicking a guess is worse than doing nothing.
+  return matches.length === 1 ? matches[0]! : null
 }
 
 const DEPOSIT_POLL_MS = 250
@@ -467,13 +484,17 @@ function requestHeaderMenu(menu: 'cash' | 'profile', itemText: string): void {
     }
     const li = trigger.closest('li')
     if (!li) return false
-    for (const el of li.querySelectorAll<HTMLElement>('a, button')) {
-      if (el !== trigger && el.textContent?.trim() === itemText) {
-        el.click()
-        return true
-      }
-    }
-    return false
+    // Candidates matched by label; href-bearing links are the more stable identity, so
+    // they win when both exist. Exactly one match or nothing — for items like "Log out"
+    // and "Withdraw" a guess is worse than a no-op.
+    const candidates = [...li.querySelectorAll<HTMLElement>('a[href], button')].filter(
+      (el) => el !== trigger && el.textContent?.trim() === itemText,
+    )
+    const links = candidates.filter((el) => el instanceof HTMLAnchorElement)
+    const pick = links.length === 1 ? links[0] : candidates.length === 1 ? candidates[0] : undefined
+    if (!pick) return false
+    pick.click()
+    return true
   }
 
   // No header in the page yet — same recovery as the deposit flow: drive fomo home (its `/`
@@ -498,16 +519,21 @@ function requestHeaderMenu(menu: 'cash' | 'profile', itemText: string): void {
 
 function render(): void {
   if (host) {
+    const wasHidden = host.dataset.foboHidden !== undefined
     delete host.dataset.foboHidden
     lockPageScroll()
     suppressPageRender()
+    if (wasHidden) window.dispatchEvent(new Event(SHOWN_EVENT))
     return
   }
   if (document.getElementById(HOST_ID)) return
 
   host = document.createElement('div')
   host.id = HOST_ID
-  const shadow = host.attachShadow({ mode: 'open' })
+  // Closed: fomo's own scripts (and anything running in its world) cannot reach into the
+  // terminal's DOM to read the search box or the balances, or synthesise clicks on the
+  // header-menu items that drive fomo's Withdraw / Log out flows.
+  const shadow = host.attachShadow({ mode: 'closed' })
 
   const sheet = document.createElement('style')
   sheet.textContent = styles
@@ -530,6 +556,7 @@ function render(): void {
       <App onOpen={navigate} onDeposit={requestDeposit} onHeaderAction={requestHeaderMenu} />
     </StrictMode>,
   )
+  window.dispatchEvent(new Event(SHOWN_EVENT))
 }
 
 /**
@@ -542,7 +569,11 @@ function render(): void {
  * Away-by-default means the destination needs no record to open as fomo — but a stale mark from
  * an earlier summon there must not resurrect the terminal over it.
  */
-function navigate(href: string): void {
+function navigate(rawHref: string): void {
+  // Same-origin only. The pushState fallback below is location.assign, which would turn a
+  // foreign URL (from a malformed API string) into an open redirect.
+  const href = sameOriginHref(rawHref)
+  if (href === null) return
   let path: string
   try {
     path = new URL(href, window.location.origin).pathname
@@ -627,11 +658,17 @@ async function sync(): Promise<void> {
 
 /**
  * fomo routes client-side, and we are in an isolated world — patching history.pushState here does
- * not see the page's own calls. popstate covers back/forward, pageshow covers a bfcache restore
- * (where the script never re-runs at all), and the poll covers in-app pushState navigation and the
- * redirect off `/` that happens before fomo has finished booting.
+ * not see the page's own calls. The Navigation API's `currententrychange` does: it fires on the
+ * shared document for every pushState/replaceState/traversal fomo makes, so route changes are
+ * seen immediately instead of on the next poll tick. popstate covers back/forward, pageshow
+ * covers a bfcache restore (where the script never re-runs at all), and a slow poll remains as
+ * the safety net (it used to be the only mechanism, at 300ms, for the page's whole life).
  */
 let lastPath = window.location.pathname
+
+/** Fallback poll cadence with the Navigation API present; the old 300ms without it. */
+const ROUTE_POLL_MS = 1_000
+const ROUTE_POLL_LEGACY_MS = 300
 
 /**
  * When the path last moved. fomo's home redirect hops through transit paths (observed live:
@@ -675,6 +712,9 @@ function watchRoute(): void {
       return
     }
     lastPathChangeAt = Date.now()
+    // Anything gated on the route settling (spending the home intent, masking the URL) needs
+    // one more look once the settle window has passed, without waiting for the poll.
+    window.setTimeout(check, SETTLE_MS + 50)
     // While the home intent is armed, every automatic landing is still "the home screen" —
     // fomo can hop more than once (the `/token` shim, address canonicalisation) before
     // settling. Home paths themselves are transit, not destinations: marking one would make
@@ -699,7 +739,9 @@ function watchRoute(): void {
     if (lastPath === '/token' || (lastPath === '/' && isTerminalPath('/'))) setPendingHome(true)
     void sync()
   })
-  window.setInterval(check, 300)
+  const navigation = (window as unknown as { navigation?: EventTarget }).navigation
+  navigation?.addEventListener('currententrychange', check)
+  window.setInterval(check, navigation ? ROUTE_POLL_MS : ROUTE_POLL_LEGACY_MS)
 }
 
 /**
@@ -727,7 +769,9 @@ document.addEventListener('keydown', (event) => {
 })
 
 try {
-  chrome.runtime.onMessage.addListener((message: { type?: string; enabled?: boolean }) => {
+  chrome.runtime.onMessage.addListener((message: { type?: string; enabled?: boolean }, sender) => {
+    // Only this extension's own contexts (the service worker relay) may drive the toggle.
+    if (sender.id !== chrome.runtime.id) return
     if (message?.type !== 'fobo:enabled-changed') return
     if (message.enabled) {
       // A toolbar toggle back on is an explicit summon, same as the launcher.
@@ -809,7 +853,7 @@ function recordEntryIntent(): void {
   // Fallback when the navigation entry is missing or names a deep URL: a same-origin referrer
   // of `/` means this document was reached by fomo redirecting off the home page — the only
   // full-page navigation that starts there — so the home intent survives that hop too.
-  let cameFromRoot = false
+  let cameFromRoot: boolean
   try {
     const ref = document.referrer ? new URL(document.referrer) : null
     cameFromRoot = ref !== null && ref.origin === window.location.origin && isHomePath(ref.pathname)
@@ -817,8 +861,19 @@ function recordEntryIntent(): void {
     cameFromRoot = false
   }
 
+  // A same-origin server redirect counts as a home entry only when nothing else sent us
+  // here: a typed or bookmarked `/` (empty referrer) or fomo redirecting off its own home.
+  // A short link or campaign redirect arriving from another site lands on a deep page the
+  // user explicitly asked for — the terminal must not mount over it.
+  const externalReferrer = (() => {
+    try {
+      return document.referrer !== '' && new URL(document.referrer).origin !== window.location.origin
+    } catch {
+      return false
+    }
+  })()
   const isHomeEntry =
-    (entry && entry.redirectCount > 0) ||
+    (entry && entry.redirectCount > 0 && !externalReferrer) ||
     entryPath === '' ||
     entryPath === PARKED_PATH ||
     (entryPath !== null && isHomePath(entryPath)) ||

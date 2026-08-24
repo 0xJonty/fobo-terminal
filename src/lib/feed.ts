@@ -13,6 +13,7 @@
  */
 
 import { fomoCall } from '~/lib/fomoApi'
+import { safeImageUrl } from '~/lib/url'
 import { chainSlug } from '~/types/token'
 
 const PAGE_LIMIT = 50
@@ -169,13 +170,12 @@ const TRADE_VERB: Readonly<Record<string, TradeFeedItem['verb']>> = {
  * usdValue; closes carry closingEventUsdAmount; swaps carry price and the token amount, whose
  * product is the same figure fomo derives (verified against live rows to within slippage).
  */
-function tradeUsd(type: string, body: Record<string, unknown>): number | undefined {
+function tradeUsd(body: Record<string, unknown>): number | undefined {
   const direct = num(body.usdValue) ?? num(body.closingEventUsdAmount)
   if (direct !== undefined) return Math.abs(direct)
   const price = num(body.price)
   const amount = num(body.humanTokenAmount)
   if (price === undefined || amount === undefined) return undefined
-  void type
   const usd = Math.abs(price * amount)
   return Number.isFinite(usd) && usd > 0 ? usd : undefined
 }
@@ -223,7 +223,7 @@ export function parseFeedItem(raw: unknown): FeedItem | null {
     pinned: row.pinned === true,
     likes: num(row.likes),
     ticker: str(body.ticker),
-    tokenImageUrl: str(body.tokenImageUrl),
+    tokenImageUrl: safeImageUrl(body.tokenImageUrl),
     marketCap: num(body.fdv) ?? num(body.marketCap),
   }
 
@@ -242,7 +242,7 @@ export function parseFeedItem(raw: unknown): FeedItem | null {
   const trader: FeedTrader = {
     userHandle: str(body.userHandle),
     displayName: str(body.displayName),
-    userImageUrl: str(body.userImageUrl),
+    userImageUrl: safeImageUrl(body.userImageUrl),
   }
 
   switch (type) {
@@ -258,7 +258,7 @@ export function parseFeedItem(raw: unknown): FeedItem | null {
         ...trader,
         kind: 'trade',
         verb: TRADE_VERB[type] ?? 'Bought',
-        usdAmount: tradeUsd(type, body),
+        usdAmount: tradeUsd(body),
         realizedPnlUsd: closing ? num(body.realizedPnlUsd) : undefined,
         realizedPnlPercent: closing ? num(body.percentageRealizedPnl) : undefined,
       }
@@ -280,7 +280,7 @@ export function parseFeedItem(raw: unknown): FeedItem | null {
           .map((t) => ({
             userHandle: str(t.userHandle),
             displayName: str(t.displayName),
-            userImageUrl: str(t.userImageUrl),
+            userImageUrl: safeImageUrl(t.userImageUrl),
           })),
       }
     }

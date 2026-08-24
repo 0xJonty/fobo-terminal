@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { FEED_GROUPS } from '~/lib/feed'
 import { parseAmount } from '~/lib/columnPrefs'
+import { HIDDEN_EVENT } from '~/lib/host'
 import {
   ALERTS_FILTERS_DEFAULT,
   type AlertsFilterSettings,
@@ -13,7 +14,13 @@ import {
  * view gets fomo's threshold/equity/market-cap bounds; the Feed view gets fomo's eight
  * filter groups as toggles. The Watchlist has no native filters, so the button hides there.
  * Reuses the column controls' visual language wholesale.
+ *
+ * The amount boxes edit a local draft and commit on blur, Enter, or 400ms of idle typing.
+ * Committing per keystroke used to mean a storage write and a full alerts backfill (with
+ * the list wiped) for every character typed.
  */
+
+const COMMIT_IDLE_MS = 400
 
 const AMOUNT_ROWS: readonly { field: keyof AlertsFilterSettings; label: string; title: string }[] = [
   { field: 'threshold', label: 'Trade size', title: "Minimum trade size in USD — fomo's stock setting is $1k. Accepts k / m." },
@@ -48,9 +55,58 @@ export function PanelFilters({
 
   useEffect(() => {
     const close = () => setOpen(false)
-    window.addEventListener('fobo:hidden', close)
-    return () => window.removeEventListener('fobo:hidden', close)
+    window.addEventListener(HIDDEN_EVENT, close)
+    return () => window.removeEventListener(HIDDEN_EVENT, close)
   }, [])
+
+  /* ---- draft + commit for the alerts amount boxes ---- */
+
+  const [draft, setDraft] = useState<AlertsFilterSettings>(alertsFilters)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const commitTimer = useRef<number | undefined>(undefined)
+  // What the parent last agreed to, by content. The storage watcher echoes each debounced
+  // write back as a new object with the same content; that echo must not reset a draft the
+  // user has kept typing into. Only a genuinely different value (Reset, the popup, another
+  // tab) replaces the draft.
+  const committedRef = useRef(JSON.stringify(alertsFilters))
+
+  useEffect(() => {
+    const incoming = JSON.stringify(alertsFilters)
+    if (incoming === committedRef.current) return
+    committedRef.current = incoming
+    setDraft(alertsFilters)
+  }, [alertsFilters])
+
+  const commit = () => {
+    if (commitTimer.current !== undefined) {
+      window.clearTimeout(commitTimer.current)
+      commitTimer.current = undefined
+    }
+    const next = draftRef.current
+    const serialized = JSON.stringify(next)
+    if (serialized === committedRef.current) return
+    committedRef.current = serialized
+    onAlertsFiltersChange(next)
+  }
+  const commitRef = useRef(commit)
+  commitRef.current = commit
+
+  const setAmount = (field: keyof AlertsFilterSettings, value: string) => {
+    setDraft((current) => ({ ...current, [field]: value }))
+    if (commitTimer.current !== undefined) window.clearTimeout(commitTimer.current)
+    commitTimer.current = window.setTimeout(() => {
+      commitTimer.current = undefined
+      commitRef.current()
+    }, COMMIT_IDLE_MS)
+  }
+
+  useEffect(
+    () => () => {
+      if (commitTimer.current !== undefined) window.clearTimeout(commitTimer.current)
+    },
+    [],
+  )
 
   // The watchlist is fomo's own unfiltered list; nothing honest to offer there.
   if (view === 'watchlist') return null
@@ -60,11 +116,8 @@ export function PanelFilters({
       ? feedDisabledGroups.length > 0
       : JSON.stringify(alertsFilters) !== JSON.stringify(ALERTS_FILTERS_DEFAULT)
 
-  const setAmount = (field: keyof AlertsFilterSettings, value: string) =>
-    onAlertsFiltersChange({ ...alertsFilters, [field]: value })
-
   const amountInput = (field: keyof AlertsFilterSettings, placeholder: string) => {
-    const value = alertsFilters[field]
+    const value = draft[field]
     const bad = value.trim() !== '' && parseAmount(value) === undefined
     return (
       <input
@@ -75,6 +128,10 @@ export function PanelFilters({
         value={value}
         data-bad={bad ? 'true' : undefined}
         onChange={(event) => setAmount(field, event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit()
+        }}
       />
     )
   }

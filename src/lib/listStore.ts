@@ -21,6 +21,17 @@ import { fromFomoRow, normalizeKey, type Token } from '~/types/token'
  */
 export const MAX_ROWS = 100
 
+/**
+ * The store itself is still bounded. Over a long session fomo can send more `new` than
+ * `remove` frames; without a ceiling every diff copy and every filter pass grew with the
+ * drift. The tail is exactly what fomo's own client never renders, so trimming it is safe.
+ */
+export const STORE_CAP = MAX_ROWS * 5
+
+function capped(list: Token[]): Token[] {
+  return list.length > STORE_CAP ? list.slice(0, STORE_CAP) : list
+}
+
 function insertAt(list: readonly Token[], index: number, row: Token): Token[] {
   const next = list.slice()
   const at = Math.max(0, Math.min(Number.isFinite(index) ? index : next.length, next.length))
@@ -40,7 +51,7 @@ export function applyDiff(current: readonly Token[], diff: ListDiff): Token[] {
   switch (diff.kind) {
     case 'snapshot': {
       if (!Array.isArray(diff.tokens)) return current as Token[]
-      return diff.tokens.map(fromFomoRow).filter((row): row is Token => row !== null)
+      return capped(diff.tokens.map(fromFomoRow).filter((row): row is Token => row !== null))
     }
 
     case 'new': {
@@ -48,7 +59,7 @@ export function applyDiff(current: readonly Token[], diff: ListDiff): Token[] {
       if (!row) return current as Token[]
       // fomo inserts without deduping; we drop any existing copy first so a re-delivered
       // frame cannot produce a duplicate row. With unique keys the result is identical.
-      return insertAt(removeByKey(current, row.key), diff.index, row)
+      return capped(insertAt(removeByKey(current, row.key), diff.index, row))
     }
 
     case 'update': {
@@ -57,7 +68,7 @@ export function applyDiff(current: readonly Token[], diff: ListDiff): Token[] {
       // Keys we build are case-folded for EVM; the wire key is not, so fold it before matching
       // or an 'update' would insert a second copy instead of moving the existing row.
       const without = removeByKey(current, diff.tokenKey ? normalizeKey(diff.tokenKey) : row.key)
-      return insertAt(without, diff.index, row)
+      return capped(insertAt(without, diff.index, row))
     }
 
     case 'remove': {

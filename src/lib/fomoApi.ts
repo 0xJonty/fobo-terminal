@@ -9,6 +9,7 @@
  */
 
 import { SUPPORTED_CHAINS } from '~/lib/protocol'
+import { safeImageUrl } from '~/lib/url'
 import { chainSlug, fromFomoRow, tokenKey, type Token } from '~/types/token'
 
 const BASE = 'https://prod-api.fomo.family'
@@ -31,6 +32,20 @@ interface Envelope<T> {
   responseObject?: T
 }
 
+/* ---------- auth state ---------- */
+
+/**
+ * A 401/403 (or no JWT at all) used to be indistinguishable from a network blip: every
+ * failure was a null, the header showed "-", and nothing told the user to sign in again.
+ * The last auth failure is remembered here and cleared by the next successful call, so
+ * the top bar can show a "signed out" hint instead of a blank.
+ */
+let authFailedAt: number | null = null
+
+export function isAuthFailing(): boolean {
+  return authFailedAt !== null
+}
+
 /**
  * One authorized call, mirroring fomo's own wrapper: JSON content type, Bearer JWT,
  * X-Supported-Chains, credentials included. Null on any failure — every caller treats the API
@@ -41,7 +56,10 @@ interface Envelope<T> {
  */
 async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
   const jwt = readJwt()
-  if (!jwt) return null
+  if (!jwt) {
+    authFailedAt = Date.now()
+    return null
+  }
 
   let response: Response
   try {
@@ -57,11 +75,16 @@ async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
   } catch {
     return null
   }
+  if (response.status === 401 || response.status === 403) {
+    authFailedAt = Date.now()
+    return null
+  }
   if (!response.ok) return null
 
   try {
     const body = (await response.json()) as Envelope<T>
     if (body.statusCode !== undefined && body.statusCode !== 200) return null
+    authFailedAt = null
     return body.responseObject ?? null
   } catch {
     return null
@@ -100,8 +123,7 @@ export async function currentUser(): Promise<FomoUser | null> {
     id: String(id),
     displayName: typeof raw.displayName === 'string' ? raw.displayName : undefined,
     userHandle: typeof raw.userHandle === 'string' ? raw.userHandle : undefined,
-    profilePictureLink:
-      typeof raw.profilePictureLink === 'string' ? raw.profilePictureLink : undefined,
+    profilePictureLink: safeImageUrl(raw.profilePictureLink),
   }
 }
 
@@ -159,6 +181,7 @@ interface BalancesPayload {
  * fomo's own react-query layer dedupes them.
  */
 let balancesCache: { at: number; userId: string; payload: BalancesPayload } | null = null
+let balancesInflight: { userId: string; promise: Promise<BalancesPayload | null> } | null = null
 const BALANCES_TTL_MS = 5_000
 
 async function fetchBalances(userId: string): Promise<BalancesPayload | null> {
@@ -166,10 +189,18 @@ async function fetchBalances(userId: string): Promise<BalancesPayload | null> {
   if (balancesCache && balancesCache.userId === userId && now - balancesCache.at < BALANCES_TTL_MS) {
     return balancesCache.payload
   }
-  const raw = await call<BalancesPayload>(`/v2/users/${encodeURIComponent(userId)}/balances`)
-  if (!raw) return null
-  balancesCache = { at: now, userId, payload: raw }
-  return raw
+  // Concurrent readers (header numbers + holdings in the same tick) share one request.
+  if (balancesInflight && balancesInflight.userId === userId) return balancesInflight.promise
+  const promise = call<BalancesPayload>(`/v2/users/${encodeURIComponent(userId)}/balances`)
+    .then((raw) => {
+      if (raw) balancesCache = { at: Date.now(), userId, payload: raw }
+      return raw
+    })
+    .finally(() => {
+      balancesInflight = null
+    })
+  balancesInflight = { userId, promise }
+  return promise
 }
 
 /** fomo's blended entry price for an open trade (its `Dr`): swaps and transfers, weighted. */
@@ -375,8 +406,7 @@ export async function searchUsers(query: string): Promise<FomoTrader[]> {
     traders.push({
       userHandle: row.userHandle,
       displayName: typeof row.displayName === 'string' ? row.displayName : undefined,
-      profilePictureLink:
-        typeof row.profilePictureLink === 'string' ? row.profilePictureLink : undefined,
+      profilePictureLink: safeImageUrl(row.profilePictureLink),
     })
   }
   return traders
@@ -409,9 +439,9 @@ function fromFlatRow(raw: unknown): Token | null {
   const chain = chainSlug(networkId)
   if (chain === undefined) return null
 
-  const logo = [row?.imageSmallUrl, row?.imageThumbUrl, row?.logo].find(
-    (v): v is string => typeof v === 'string' && v !== '',
-  )
+  const logo = [row?.imageSmallUrl, row?.imageThumbUrl, row?.logo]
+    .map(safeImageUrl)
+    .find((v): v is string => v !== undefined)
   return {
     key: tokenKey(address, networkId),
     address,
@@ -451,8 +481,37 @@ export interface WatchlistEntry {
   createdAt: string
 }
 
+/**
+ * The bottom-bar ticker and the panel's watchlist view both read the ids on their own
+ * minute clocks; a short cache plus in-flight sharing turns those into one request.
+ */
+let watchlistCache: { at: number; entries: WatchlistEntry[] } | null = null
+let watchlistInflight: Promise<WatchlistEntry[] | null> | null = null
+const WATCHLIST_TTL_MS = 5_000
+
 /** GET /watchlist — the ids of every token the user has starred, verified live. */
-export async function watchlist(): Promise<WatchlistEntry[] | null> {
+export function watchlist(): Promise<WatchlistEntry[] | null> {
+  if (watchlistCache && Date.now() - watchlistCache.at < WATCHLIST_TTL_MS) {
+    return Promise.resolve(watchlistCache.entries)
+  }
+  if (watchlistInflight) return watchlistInflight
+  watchlistInflight = fetchWatchlist()
+    .then((entries) => {
+      if (entries) watchlistCache = { at: Date.now(), entries }
+      return entries
+    })
+    .finally(() => {
+      watchlistInflight = null
+    })
+  return watchlistInflight
+}
+
+/** Drop the cached ids — after an un-star, the next read must hit the server. */
+export function invalidateWatchlist(): void {
+  watchlistCache = null
+}
+
+async function fetchWatchlist(): Promise<WatchlistEntry[] | null> {
   const raw = await call<{ watchlist?: unknown[] }>('/watchlist')
   if (!raw || !Array.isArray(raw.watchlist)) return null
 
@@ -476,6 +535,7 @@ export async function watchlistRemove(networkId: number, tokenAddress: string): 
     method: 'DELETE',
     body: JSON.stringify({ networkId, tokenAddress }),
   })
+  invalidateWatchlist()
   return result !== null
 }
 

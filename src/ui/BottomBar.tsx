@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  appStatus,
-  filterTokens,
-  watchlist,
-  watchlistRemove,
-  type AppStatus,
-} from '~/lib/fomoApi'
+import { watchlistRemove } from '~/lib/fomoApi'
 import { tickerPrice, usd } from '~/lib/format'
+import { useResource } from '~/lib/resource'
+import { MAJORS, status as statusResource, ticker } from '~/lib/session'
+import { tokenPath } from '~/lib/url'
 import { PercentChange } from '~/ui/PercentChange'
 import { tokenKey, type Token } from '~/types/token'
 
@@ -22,6 +19,8 @@ import { tokenKey, type Token } from '~/types/token'
  * - status dot: GET status.fomo.family/prod every 5 minutes; STABLE shows a rotating easter
  *   egg as its tooltip, exactly as fomo ships.
  *
+ * The polling itself lives in lib/session.ts (shared, paused while the terminal is hidden).
+ *
  * Display rules mirrored from their code, not guessed: majors always show price; a watchlist
  * token shows market cap only when 0 < mc <= $10B (fomo's own cutoff), otherwise price; the
  * percent is |change24|·100 to two decimals with the ▲/▼ carrying the sign.
@@ -29,25 +28,11 @@ import { tokenKey, type Token } from '~/types/token'
 
 const SOLANA = 1399811149
 
-/** fomo's four majors, verbatim from its footer component: cbBTC, WETH, WSOL, HYPE. */
-const MAJORS = [
-  'cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij',
-  '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs',
-  'So11111111111111111111111111111111111111112',
-  '98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g',
-].map((address) => tokenKey(address, SOLANA))
-
-const MAJOR_SET = new Set(MAJORS)
-
 /** Above this market cap fomo's ticker falls back to price. 1e10 in their bundle. */
 const MC_DISPLAY_MAX = 1e10
 
 /** Tokens fomo never shows an MC for (the majors plus one hardcoded exception). */
 const MC_BLOCKED = new Set([...MAJORS, tokenKey('uniHfuPhEQSrtpzXpJZDCSq53yaejKKpNhFUiKoHKHV', SOLANA)])
-
-const WATCHLIST_MAX = 15
-const TICKER_POLL_MS = 60_000
-const STATUS_POLL_MS = 300_000
 
 /** fomo's rotating "all good" tooltips, from its i18n catalogue. */
 const STABLE_PHRASES = [
@@ -66,7 +51,7 @@ function TickerItem({ token, onNavigate }: { token: Token; onNavigate: (href: st
   const mc = token.marketCap
   const showMc = mc !== undefined && mc > 0 && mc <= MC_DISPLAY_MAX && !MC_BLOCKED.has(token.key)
   const change = token.change24h === undefined ? undefined : token.change24h * 100
-  const href = `/tokens/${token.chain}/${token.address}`
+  const href = tokenPath(token.chain, token.address)
   return (
     <a
       className="ticker-link"
@@ -77,7 +62,9 @@ function TickerItem({ token, onNavigate }: { token: Token; onNavigate: (href: st
         onNavigate(href)
       }}
     >
-      {token.logo && <img className="ticker-icon" src={token.logo} alt={token.symbol} />}
+      {token.logo && (
+        <img className="ticker-icon" src={token.logo} alt={token.symbol} referrerPolicy="no-referrer" />
+      )}
       <span className="ticker-value">
         {showMc ? (
           <>
@@ -131,54 +118,35 @@ function DiscordIcon() {
 }
 
 export function BottomBar({ onNavigate }: { onNavigate: (href: string) => void }) {
-  const [majors, setMajors] = useState<Token[]>([])
-  const [watched, setWatched] = useState<Token[]>([])
-  const [status, setStatus] = useState<AppStatus | null>(null)
+  const rows = useResource(ticker)
+  const status = useResource(statusResource)
   const [stablePhrase] = useState(
     () => STABLE_PHRASES[Math.floor(Math.random() * STABLE_PHRASES.length)],
   )
 
-  const refresh = useCallback(async () => {
-    // One filterTokens call covers both halves — fomo issues two, but the payload is the same.
-    const entries = (await watchlist()) ?? []
-    const watchedIds = entries
-      .slice()
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .map((entry) => tokenKey(entry.tokenAddress, entry.networkId))
-      .filter((id) => !MAJOR_SET.has(id))
-      .slice(0, WATCHLIST_MAX)
+  // Optimistic un-star: hide the row now, put it back if fomo refuses, and let the next
+  // ticker refresh (which the removal invalidates) settle the truth.
+  const [hiddenKeys, setHiddenKeys] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    setHiddenKeys((current) => (current.size === 0 ? current : new Set()))
+  }, [rows])
 
-    const rows = await filterTokens([...MAJORS, ...watchedIds])
-    if (rows.length === 0) return
-    const byKey = new Map(rows.map((row) => [row.key, row]))
-
-    const majorRows = MAJORS.map((id) => byKey.get(id)).filter((row): row is Token => !!row)
-    const watchedRows = watchedIds.map((id) => byKey.get(id)).filter((row): row is Token => !!row)
-    setMajors(majorRows)
-    setWatched(watchedRows)
+  const remove = useCallback(async (token: Token) => {
+    setHiddenKeys((current) => new Set(current).add(token.key))
+    const ok = await watchlistRemove(token.networkId, token.address)
+    if (ok) {
+      ticker.refresh()
+      return
+    }
+    setHiddenKeys((current) => {
+      const next = new Set(current)
+      next.delete(token.key)
+      return next
+    })
   }, [])
 
-  useEffect(() => {
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), TICKER_POLL_MS)
-    return () => window.clearInterval(timer)
-  }, [refresh])
-
-  useEffect(() => {
-    const tick = async () => setStatus(await appStatus())
-    void tick()
-    const timer = window.setInterval(() => void tick(), STATUS_POLL_MS)
-    return () => window.clearInterval(timer)
-  }, [])
-
-  const remove = useCallback(
-    async (token: Token) => {
-      setWatched((current) => current.filter((row) => row.key !== token.key))
-      await watchlistRemove(token.networkId, token.address)
-      void refresh()
-    },
-    [refresh],
-  )
+  const majors = rows?.majors ?? []
+  const watched = (rows?.watched ?? []).filter((token) => !hiddenKeys.has(token.key))
 
   /* Drag-to-scroll, matching fomo's cursor-grab strip. */
   const scrollRef = useRef<HTMLDivElement>(null)

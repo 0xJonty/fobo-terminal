@@ -15,6 +15,7 @@ import {
 import type { AlertItem } from '~/lib/alerts'
 import type { FeedItem } from '~/lib/feed'
 import type { Token } from '~/types/token'
+import { HIDDEN_EVENT } from '~/lib/host'
 
 /**
  * The FOMO Panel — the side rail beside the token columns, switching between fomo's Alerts,
@@ -95,8 +96,8 @@ export function SidePanel({
 
   useEffect(() => {
     const close = () => setOpen(false)
-    window.addEventListener('fobo:hidden', close)
-    return () => window.removeEventListener('fobo:hidden', close)
+    window.addEventListener(HIDDEN_EVENT, close)
+    return () => window.removeEventListener(HIDDEN_EVENT, close)
   }, [])
 
   const count = view === 'alerts' ? alerts.length : view === 'watchlist' ? (watchlist?.length ?? 0) : feed.length

@@ -7,6 +7,11 @@
  * `connect-src`, so the content script can call it directly.
  *
  * This is decoration only. fomo remains the source of truth for list membership and order.
+ *
+ * Cost note: the payload is ~1.5 MB per chain, so warming is gated on the terminal being
+ * active (see App), every request carries a timeout, and a failing chain backs off
+ * exponentially instead of retrying on the next tick. Third-party disclosure: these requests
+ * reach Mobula from the user's browser (see README).
  */
 
 import { tokenKey, type TokenMetrics } from '~/types/token'
@@ -15,6 +20,13 @@ const ENDPOINT = 'https://fomo-api.mobula.io/api/2/pulse'
 
 /** The payload is ~1.5 MB per chain, so poll slowly and cache hard. */
 const TTL_MS = 60_000
+
+/** A stalled response must not hold a chain's in-flight slot forever. */
+const TIMEOUT_MS = 15_000
+
+/** Backoff after a failed refresh: 30s, 60s, 120s, ... capped at 10 minutes. */
+const BACKOFF_BASE_MS = 30_000
+const BACKOFF_MAX_MS = 600_000
 
 /** networkId -> Mobula's chainId parameter. Chains absent here simply go un-enriched. */
 const MOBULA_CHAIN: Readonly<Record<number, string>> = {
@@ -33,6 +45,9 @@ interface CacheEntry {
 
 const cache = new Map<number, CacheEntry>()
 const inflight = new Map<number, Promise<void>>()
+/** Per-chain failure count and the earliest time a retry is allowed. */
+const failures = new Map<number, { count: number; retryAt: number }>()
+let warnedBlocked = false
 
 function num(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : Number(value)
@@ -63,7 +78,7 @@ async function refresh(networkId: number): Promise<void> {
   if (!chainId) return
 
   const url = `${ENDPOINT}?assetMode=false&chainId=${encodeURIComponent(chainId)}&model=default`
-  const response = await fetch(url, { credentials: 'omit' })
+  const response = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(TIMEOUT_MS) })
   if (!response.ok) throw new Error(`mobula pulse ${response.status}`)
 
   const body = (await response.json()) as Record<string, { data?: unknown[] } | undefined>
@@ -83,6 +98,19 @@ async function refresh(networkId: number): Promise<void> {
   cache.set(networkId, { at: Date.now(), rows })
 }
 
+function noteFailure(networkId: number, error: unknown): void {
+  const previous = failures.get(networkId)
+  const count = (previous?.count ?? 0) + 1
+  const delay = Math.min(BACKOFF_BASE_MS * 2 ** (count - 1), BACKOFF_MAX_MS)
+  failures.set(networkId, { count, retryAt: Date.now() + delay })
+  // A TypeError from fetch means the request never left: CSP, network or a blocked host.
+  // Say so once, so "the cards got sparser" is diagnosable from the console.
+  if (!warnedBlocked && error instanceof TypeError) {
+    warnedBlocked = true
+    console.warn('[fobo] Mobula enrichment request failed to send (CSP or network); cards will omit holder metrics', error)
+  }
+}
+
 /** Kick off a refresh for any chain whose cache is cold. Never throws. */
 export function warm(networkIds: Iterable<number>): void {
   const now = Date.now()
@@ -91,10 +119,16 @@ export function warm(networkIds: Iterable<number>): void {
     const entry = cache.get(networkId)
     if (entry && now - entry.at < TTL_MS) continue
     if (inflight.has(networkId)) continue
+    const failure = failures.get(networkId)
+    if (failure && now < failure.retryAt) continue
 
     const task = refresh(networkId)
-      .catch(() => {
+      .then(() => {
+        failures.delete(networkId)
+      })
+      .catch((error: unknown) => {
         // Enrichment is optional by design; a failure just means sparser cards.
+        noteFailure(networkId, error)
       })
       .finally(() => {
         inflight.delete(networkId)
@@ -106,11 +140,4 @@ export function warm(networkIds: Iterable<number>): void {
 /** Look up cached metrics for one token. Returns undefined when we have nothing honest to show. */
 export function metricsFor(key: string, networkId: number): TokenMetrics | undefined {
   return cache.get(networkId)?.rows.get(key)
-}
-
-/** Monotonic counter so React can re-render when new enrichment lands. */
-export function cacheStamp(): number {
-  let stamp = 0
-  for (const entry of cache.values()) stamp = Math.max(stamp, entry.at)
-  return stamp
 }

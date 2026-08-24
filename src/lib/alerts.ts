@@ -15,6 +15,7 @@
  */
 
 import { fomoCall } from '~/lib/fomoApi'
+import { safeImageUrl } from '~/lib/url'
 import { chainSlug } from '~/types/token'
 
 /** fomo requests pages of 50 (its `ks`). */
@@ -137,12 +138,12 @@ export function parseAlert(raw: unknown): AlertItem | null {
         kind: 'swap',
         action,
         ticker: str(row.ticker),
-        tokenImageUrl: str(row.tokenImageUrl),
+        tokenImageUrl: safeImageUrl(row.tokenImageUrl),
         marketCap: num(row.fdv) ?? num(row.marketCap),
         userId: str(row.userId),
         userHandle: str(row.userHandle),
         displayName: str(row.displayName),
-        profilePictureLink: str(row.profilePictureLink),
+        profilePictureLink: safeImageUrl(row.profilePictureLink),
         usdAmount: num(row.usdAmount),
       }
     }
@@ -155,7 +156,7 @@ export function parseAlert(raw: unknown): AlertItem | null {
         kind: 'multi',
         action: type === 'multi_user_buy' ? 'buy' : 'sell',
         ticker: str(body.ticker),
-        tokenImageUrl: str(body.tokenImageUrl),
+        tokenImageUrl: safeImageUrl(body.tokenImageUrl),
         marketCap: num(body.fdv) ?? num(body.marketCap),
         totalVolume: num(body.totalVolume),
         uniqueTraders: num(body.uniqueTraders),
@@ -167,7 +168,7 @@ export function parseAlert(raw: unknown): AlertItem | null {
           .map((t) => ({
             userHandle: str(t.userHandle),
             displayName: str(t.displayName),
-            userImageUrl: str(t.userImageUrl),
+            userImageUrl: safeImageUrl(t.userImageUrl),
           })),
       }
     }
@@ -183,12 +184,12 @@ export function parseAlert(raw: unknown): AlertItem | null {
         ...base,
         kind: 'thesis',
         ticker: str(row.ticker),
-        tokenImageUrl: str(row.tokenImageUrl),
+        tokenImageUrl: safeImageUrl(row.tokenImageUrl),
         marketCap: num(row.fdv) ?? num(row.marketCap),
         userId: str(row.userId),
         userHandle: str(row.userHandle),
         displayName: str(row.displayName),
-        profilePictureLink: str(row.profilePictureLink),
+        profilePictureLink: safeImageUrl(row.profilePictureLink),
         comment: str(comment.comment),
         positionUsd: num(authorTrade.usdValue),
       }
@@ -199,12 +200,12 @@ export function parseAlert(raw: unknown): AlertItem | null {
         ...base,
         kind: 'milestone',
         ticker: str(body.ticker),
-        tokenImageUrl: str(body.tokenImageUrl),
+        tokenImageUrl: safeImageUrl(body.tokenImageUrl),
         marketCap: num(body.fdv) ?? num(body.marketCap),
         userId: str(row.userId),
         userHandle: str(body.userHandle),
         displayName: str(body.displayName),
-        profilePictureLink: str(body.userImageUrl),
+        profilePictureLink: safeImageUrl(body.userImageUrl),
         pnlUsd: num(body.totalPnlUsd),
         pnlPercent: num(body.totalPercentagePnl),
         tag: str(body.tag),

@@ -1,7 +1,9 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Avatar, TraderName, ageMs } from '~/ui/AlertsPanel'
+import { Avatar, AvatarStack, RowLink, TokenLine, TraderName, ageMs } from '~/ui/AlertsPanel'
 import { usd, percent } from '~/lib/format'
+import { profilePath, tokenPath } from '~/lib/url'
+import { useActiveInterval } from '~/lib/visibility'
 import type {
   FeedItem,
   MilestoneFeedItem,
@@ -16,31 +18,15 @@ import type {
 /**
  * The Feed view — fomo's social feed (its side panel's "Feed" tab): oversized trades,
  * position closes, multi-trader clusters, theses, milestones, verification events, smart
- * followings, and fomo's own pinned recap posts. Same visual language as the alerts rows;
- * every figure comes off the wire item, never derived beyond fomo's own arithmetic.
+ * followings, and fomo's own pinned recap posts. Same visual language (and the same row
+ * anatomy) as the alerts rows; every figure comes off the wire item, never derived beyond
+ * fomo's own arithmetic.
  */
 
 /** Feed rows vary widely (posts carry paragraphs); the virtualiser's starting guess. */
 const ESTIMATED_ROW = 84
 
 const CLOCK_MS = 30_000
-
-function TokenLine({
-  item,
-  children,
-}: {
-  item: { tokenImageUrl?: string; ticker?: string; marketCap?: number }
-  children?: React.ReactNode
-}) {
-  return (
-    <span className="alert-token">
-      {item.tokenImageUrl && <img className="alert-token-logo" src={item.tokenImageUrl} alt="" loading="lazy" />}
-      {item.ticker && <span className="alert-ticker">{item.ticker}</span>}
-      {children}
-      {item.marketCap !== undefined && <span className="muted">at {usd(item.marketCap)} MC</span>}
-    </span>
-  )
-}
 
 function TradeRow({
   item,
@@ -80,31 +66,13 @@ function TradeRow({
 }
 
 function MultiRow({ item, now }: { item: MultiFeedItem; now: number }) {
-  const traders = item.topTraders.filter((t) => t.userImageUrl || t.userHandle || t.displayName)
   const who =
     item.uniqueTraders !== undefined
       ? `${item.uniqueTraders} ${item.areTopTraders ? 'top traders' : 'traders'}`
       : 'Multiple traders'
   return (
     <>
-      <span className="alert-stack">
-        {traders.length > 0 ? (
-          traders.map((t, i) => (
-            <img
-              key={t.userHandle ?? i}
-              className="alert-stack-avatar"
-              src={t.userImageUrl}
-              alt=""
-              loading="lazy"
-              style={{ zIndex: traders.length - i }}
-            />
-          ))
-        ) : (
-          <span className="alert-avatar circle-fallback" aria-hidden="true">
-            ∗
-          </span>
-        )}
-      </span>
+      <AvatarStack traders={item.topTraders} />
       <div className="alert-lines">
         <span className="alert-head">
           <span className="alert-handle">{who}</span>
@@ -257,16 +225,19 @@ function PostRow({
         <p className="alert-comment feed-post-body">
           {item.segments.map((segment, i) =>
             segment.href ? (
-              <button
+              <a
                 key={i}
                 className="feed-post-link"
+                href={segment.href}
                 onClick={(event) => {
                   event.stopPropagation()
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
+                  event.preventDefault()
                   onOpenToken(segment.href!)
                 }}
               >
                 {segment.text}
-              </button>
+              </a>
             ) : (
               <span key={i}>{segment.text}</span>
             ),
@@ -275,6 +246,17 @@ function PostRow({
       )}
     </div>
   )
+}
+
+/** Where a click on the row goes: the token page, else the trader's profile, else nowhere. */
+function destination(item: FeedItem): { href: string; label: string } | null {
+  if (item.chain && item.tokenAddress) {
+    return { href: tokenPath(item.chain, item.tokenAddress), label: `Open ${item.ticker ?? 'token'} on fomo` }
+  }
+  if ('userHandle' in item && item.userHandle) {
+    return { href: profilePath(item.userHandle), label: `Open ${item.userHandle}'s profile` }
+  }
+  return null
 }
 
 export function FeedView({
@@ -295,10 +277,7 @@ export function FeedView({
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const [, tick] = useReducer((n: number) => n + 1, 0)
-  useEffect(() => {
-    const id = window.setInterval(tick, CLOCK_MS)
-    return () => window.clearInterval(id)
-  }, [])
+  useActiveInterval(tick, CLOCK_MS)
   const now = Date.now()
 
   const virtualizer = useVirtualizer({
@@ -316,11 +295,7 @@ export function FeedView({
     if (lastVisible >= items.length - 5) onLoadMore()
   }, [lastVisible, hasMore, loadingMore, items.length, onLoadMore])
 
-  const openItem = (item: FeedItem) => {
-    if (item.chain && item.tokenAddress) onOpen(`/tokens/${item.chain}/${item.tokenAddress}`)
-    else if ('userHandle' in item && item.userHandle) onOpen(`/profile/${item.userHandle}`)
-  }
-  const openProfile = (handle: string) => onOpen(`/profile/${handle}`)
+  const openProfile = (handle: string) => onOpen(profilePath(handle))
 
   return (
     <div className="column-body" ref={scrollRef}>
@@ -333,6 +308,7 @@ export function FeedView({
           {virtualItems.map((row) => {
             const item = items[row.index]
             if (!item) return null
+            const target = destination(item)
             return (
               <div
                 key={row.key}
@@ -346,7 +322,8 @@ export function FeedView({
                   transform: `translateY(${row.start}px)`,
                 }}
               >
-                <button className="alert-row" onClick={() => openItem(item)}>
+                <div className="alert-row" data-static={target ? undefined : ''}>
+                  {target && <RowLink href={target.href} label={target.label} onOpen={onOpen} />}
                   {item.kind === 'trade' && <TradeRow item={item} now={now} onOpenProfile={openProfile} />}
                   {item.kind === 'multi' && <MultiRow item={item} now={now} />}
                   {item.kind === 'thesis' && <ThesisRow item={item} now={now} onOpenProfile={openProfile} />}
@@ -356,7 +333,7 @@ export function FeedView({
                   {item.kind === 'verified' && <VerifiedRow item={item} now={now} />}
                   {item.kind === 'smart' && <SmartRow item={item} now={now} onOpenProfile={openProfile} />}
                   {item.kind === 'post' && <PostRow item={item} now={now} onOpenToken={onOpen} />}
-                </button>
+                </div>
               </div>
             )
           })}

@@ -6,8 +6,11 @@ const COMPACT = new Intl.NumberFormat('en', { notation: 'compact', maximumFracti
 export function usd(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '—'
   if (value === 0) return '$0'
-  if (Math.abs(value) < 0.01) return `$${value.toPrecision(3)}`
-  return `$${COMPACT.format(value)}`
+  // Sign goes before the currency symbol (-$1.2K), never inside it ($-1.2K).
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  if (abs < 0.01) return `${sign}$${abs.toPrecision(3)}`
+  return `${sign}$${COMPACT.format(abs)}`
 }
 
 /** Plain compact count: 1.2K */

@@ -14,7 +14,6 @@ import {
 } from '~/lib/alerts'
 import { fetchFeedPage, mergeFeed, type FeedItem } from '~/lib/feed'
 import { dingForAlert, unlockAudio } from '~/lib/sound'
-import { WATCHLIST_POLL_MS, fetchWatchlistTokens } from '~/lib/watchlist'
 import {
   applyPrefs,
   defaultAllPrefs,
@@ -24,11 +23,11 @@ import {
   type AllColumnPrefs,
   type ColumnPrefs,
 } from '~/lib/columnPrefs'
-import { currentUser } from '~/lib/fomoApi'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { metricsFor, warm } from '~/lib/mobula'
-import { LIST_KEYS, LIST_LABEL, type ListKey } from '~/lib/protocol'
+import { LIST_KEYS, LIST_LABEL, type ListDiff, type ListKey } from '~/lib/protocol'
+import { currentUserStore, useCurrentUser, watchlistTokens } from '~/lib/session'
 import {
   readAlertsSettings,
   readPanelView,
@@ -39,6 +38,8 @@ import {
   type AlertsSettings,
   type PanelView,
 } from '~/lib/settings'
+import { tokenPath } from '~/lib/url'
+import { isActive, useTerminalActive } from '~/lib/visibility'
 import { tokenKey, type Token } from '~/types/token'
 
 type Lists = Record<ListKey, Token[]>
@@ -47,6 +48,26 @@ const EMPTY: Lists = { 'pre-graduated': [], graduated: [], trending: [] }
 
 /** How long a newly inserted row stays highlighted. */
 const FRESH_MS = 900
+
+/** Mobula re-warm cadence while the terminal is on screen (its cache TTL is 60s). */
+const ENRICH_MS = 30_000
+
+/** The feed view's slow refresh, matching fomo's own cadence. */
+const FEED_REFRESH_MS = 60_000
+
+/** No socket frame for this long (while authenticated) is shown as "stale" in the columns. */
+const STALE_AFTER_MS = 30_000
+
+/** Hidden-terminal diff queue ceiling before a forced flush. */
+const MAX_QUEUED_DIFFS = 1_000
+
+/** Left join: fomo owns membership and order, Mobula only decorates. */
+function decorate(tokens: readonly Token[]): Token[] {
+  return tokens.map((token) => {
+    const metrics = metricsFor(token.key, token.networkId)
+    return metrics ? { ...token, metrics } : token
+  })
+}
 
 export function App({
   onOpen,
@@ -59,6 +80,8 @@ export function App({
 }) {
   const [lists, setLists] = useState<Lists>(EMPTY)
   const [status, setStatus] = useState<SocketStatus>('connecting')
+  const active = useTerminalActive()
+  const user = useCurrentUser()
 
   /* ---- per-column filter & sort prefs ---- */
 
@@ -122,11 +145,16 @@ export function App({
     soundRef.current = alertsSettings?.sound !== false
   }, [alertsSettings])
 
-  // AudioContext creation is gesture-gated by the browser; any pointerdown unlocks it.
+  // AudioContext creation is gesture-gated by the browser; a pointerdown inside the visible
+  // terminal unlocks it — but only for users who will actually hear a ding.
   useEffect(() => {
-    window.addEventListener('pointerdown', unlockAudio, { capture: true })
-    return () => window.removeEventListener('pointerdown', unlockAudio, { capture: true })
-  }, [])
+    if (!panelEnabled || alertsSettings?.sound === false) return
+    const unlock = () => {
+      if (isActive()) unlockAudio()
+    }
+    window.addEventListener('pointerdown', unlock, { capture: true })
+    return () => window.removeEventListener('pointerdown', unlock, { capture: true })
+  }, [panelEnabled, alertsSettings?.sound])
 
   // The chosen view is tab-session state — it survives refreshes of this tab.
   const [panelView, setPanelView] = useState<PanelView>(readPanelView)
@@ -150,7 +178,7 @@ export function App({
   }, [])
 
   // fomo's filters for both live views, edited in the panel header and persisted with the
-  // rest of the panel settings.
+  // rest of the panel settings (the write is debounced in settings.ts).
   const changeFeedGroups = useCallback((feedDisabledGroups: string[]) => {
     setAlertsSettings((current) => {
       if (!current) return current
@@ -203,23 +231,27 @@ export function App({
   const alertsRetryAt = useRef(0)
 
   // Runs once the settings have loaded (the filters come from them), and again whenever
-  // the filters change — the server owns filtering, so a change means a fresh backfill.
+  // the (debounced) filters change — the server owns filtering, so a change means a fresh
+  // backfill. The list on screen stays until the new page arrives: live frames that landed
+  // meanwhile are kept if they pass the new filters, everything older is replaced.
   useEffect(() => {
     if (!alertsSettings) return
     let cancelled = false
-    setAlerts([])
+    const startedAt = Date.now()
+    const filters = alertsFiltersRef.current
     setAlertsLoading(true)
-    setAlertsHasMore(false)
-    alertsLastId.current = undefined
-    void fetchAlertsPage(undefined, alertsFiltersRef.current).then((page) => {
-      if (cancelled || !page) {
-        if (!cancelled) setAlertsLoading(false)
-        return
-      }
-      alertsLastId.current = page.lastId
-      setAlerts((current) => mergeAlerts(current, page.items))
-      setAlertsHasMore(page.hasNextPage)
+    void fetchAlertsPage(undefined, filters).then((page) => {
+      if (cancelled) return
       setAlertsLoading(false)
+      if (!page) return
+      alertsLastId.current = page.lastId
+      setAlerts((current) =>
+        mergeAlerts(
+          page.items,
+          current.filter((item) => item.createdAtMs >= startedAt && passesAlertsFilters(item, filters)),
+        ),
+      )
+      setAlertsHasMore(page.hasNextPage)
     })
     return () => {
       cancelled = true
@@ -243,32 +275,24 @@ export function App({
     })
   }, [])
 
-  /* ---- watchlist view: fomo's own ids + row data, polled on fomo's cadence ---- */
+  /* ---- watchlist view: a shared, visibility-gated resource (see lib/session.ts) ---- */
 
+  const watchOn = panelView === 'watchlist' && panelEnabled
   const [watchTokens, setWatchTokens] = useState<Token[] | null>(null)
-  const [watchLoading, setWatchLoading] = useState(false)
+  const [watchFailed, setWatchFailed] = useState(false)
   useEffect(() => {
-    if (panelView !== 'watchlist' || !panelEnabled) return
-    let cancelled = false
-    setWatchLoading(true)
-    const load = () =>
-      void fetchWatchlistTokens().then((tokens) => {
-        if (cancelled) return
-        setWatchLoading(false)
-        // A failed refresh keeps the last good list on screen rather than blanking it.
-        if (tokens !== null) setWatchTokens(tokens)
-        else setWatchTokens((current) => current)
-      })
-    load()
-    const id = window.setInterval(load, WATCHLIST_POLL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
+    if (!watchOn) return
+    const read = () => {
+      setWatchTokens(watchlistTokens.get())
+      setWatchFailed(watchlistTokens.getStatus() === 'error')
     }
-  }, [panelView, panelEnabled])
+    read()
+    return watchlistTokens.subscribe(read)
+  }, [watchOn])
 
   /* ---- feed view: first page + slow refresh + demand paging, like the alerts ---- */
 
+  const feedOn = panelView === 'feed' && panelEnabled
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [feedLoading, setFeedLoading] = useState(true)
   const [feedHasMore, setFeedHasMore] = useState(false)
@@ -276,14 +300,17 @@ export function App({
   const feedLastId = useRef<string | undefined>(undefined)
   const feedRetryAt = useRef(0)
 
+  // A groups change re-keys this effect: start over, the server owns membership.
   useEffect(() => {
-    if (panelView !== 'feed' || !panelEnabled) return
-    let cancelled = false
-    // A groups change re-keys this effect: start over, the server owns membership.
     setFeedItems([])
     setFeedLoading(true)
     setFeedHasMore(false)
     feedLastId.current = undefined
+  }, [feedGroupsKey])
+
+  useEffect(() => {
+    if (!feedOn || !active) return
+    let cancelled = false
     const load = () =>
       void fetchFeedPage(undefined, feedGroupsRef.current).then((page) => {
         if (cancelled) return
@@ -294,13 +321,12 @@ export function App({
         setFeedHasMore((had) => had || page.hasMore)
       })
     load()
-    const id = window.setInterval(load, 60_000)
+    const id = window.setInterval(load, FEED_REFRESH_MS)
     return () => {
       cancelled = true
       window.clearInterval(id)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the disabled groups
-  }, [panelView, panelEnabled, feedGroupsKey])
+  }, [feedOn, active, feedGroupsKey])
 
   const loadMoreFeed = useCallback(() => {
     const lastId = feedLastId.current
@@ -318,11 +344,51 @@ export function App({
     })
   }, [])
 
-  // One socket, all list topics plus the alerts feed. See lib/fomoSocket.ts for why we
-  // connect rather than observe.
+  /* ---- the socket: one connection, all list topics plus the alerts feed ---- */
+
+  // Frames are applied in batches: a burst of trending re-orders used to mean one
+  // setLists (and a full filter+sort of every column) per frame. While the terminal is
+  // hidden nothing is applied at all — the diffs queue and are replayed in order when it
+  // comes back, so the hidden tree does no layout work behind fomo's own page.
+  const pendingDiffs = useRef<{ list: ListKey; diff: ListDiff }[]>([])
+  const flushHandle = useRef<number | null>(null)
+  const lastFrameAt = useRef(0)
+  const [stale, setStale] = useState(false)
+
+  const flushDiffs = useCallback(() => {
+    flushHandle.current = null
+    const batch = pendingDiffs.current
+    if (batch.length === 0) return
+    pendingDiffs.current = []
+    setLists((current) => {
+      const next = { ...current }
+      for (const { list, diff } of batch) next[list] = applyDiff(next[list], diff)
+      return next
+    })
+  }, [])
+
+  const scheduleFlush = useCallback(() => {
+    if (!isActive() || flushHandle.current !== null) return
+    flushHandle.current = window.requestAnimationFrame(flushDiffs)
+  }, [flushDiffs])
+
+  // Replay whatever queued while hidden the moment the terminal is active again.
+  useEffect(() => {
+    if (active) scheduleFlush()
+  }, [active, scheduleFlush])
+
+  const socketRef = useRef<ReturnType<typeof createFomoSocket> | null>(null)
   useEffect(() => {
     const socket = createFomoSocket({
-      onStatus: setStatus,
+      onStatus: (next) => {
+        setStatus(next)
+        // The socket authenticating proves a JWT exists now — worth another try at the
+        // current-user lookup if the first one raced Privy's boot.
+        if (next === 'authenticated') currentUserStore.refresh()
+      },
+      onFrame: (at) => {
+        lastFrameAt.current = at
+      },
       onDiff: (list, diff) => {
         if (diff.kind === 'new') {
           const raw = diff.update as { token?: { address?: string; networkId?: number } }
@@ -332,7 +398,11 @@ export function App({
             markFresh(tokenKey(address, networkId))
           }
         }
-        setLists((current) => ({ ...current, [list]: applyDiff(current[list], diff) }))
+        pendingDiffs.current.push({ list, diff })
+        // A tab left hidden for hours must not queue without bound; past this many frames
+        // apply them even though the tree is hidden (one setLists, rarely).
+        if (pendingDiffs.current.length > MAX_QUEUED_DIFFS) flushDiffs()
+        else scheduleFlush()
       },
       onAlert: (payload) => {
         const item = parseAlert(payload)
@@ -345,12 +415,32 @@ export function App({
         setAlerts((current) => mergeAlerts(current, [item]))
       },
     })
-    // The alerts topic wants the user's own id, which only the API knows.
-    void currentUser().then((user) => {
-      if (user) socket.setAlertUser(user.id)
-    })
-    return socket.close
-  }, [markFresh])
+    socketRef.current = socket
+    return () => {
+      socketRef.current = null
+      if (flushHandle.current !== null) window.cancelAnimationFrame(flushHandle.current)
+      flushHandle.current = null
+      socket.close()
+    }
+  }, [markFresh, scheduleFlush, flushDiffs])
+
+  // The alerts topic wants the user's own id, which only the API knows — and the lookup
+  // retries until it lands (lib/session.ts), so this fires as soon as it does.
+  useEffect(() => {
+    if (user) socketRef.current?.setAlertUser(user.id)
+  }, [user])
+
+  // "Stale" is judged only while the terminal is on screen and the socket claims to be live.
+  useEffect(() => {
+    if (!active || status !== 'authenticated') {
+      setStale(false)
+      return
+    }
+    const tick = () => setStale(lastFrameAt.current > 0 && Date.now() - lastFrameAt.current > STALE_AFTER_MS)
+    tick()
+    const id = window.setInterval(tick, 5_000)
+    return () => window.clearInterval(id)
+  }, [active, status])
 
   useEffect(() => {
     const timers = freshTimers.current
@@ -360,7 +450,8 @@ export function App({
     }
   }, [])
 
-  // Warm Mobula for whichever chains are actually on screen, then re-render when it lands.
+  /* ---- Mobula enrichment: warm the chains on screen, re-render when it lands ---- */
+
   const [enrichStamp, setEnrichStamp] = useState(0)
   const networkIds = useMemo(() => {
     const ids = new Set<number>()
@@ -373,7 +464,7 @@ export function App({
   }, [lists, watchTokens])
 
   useEffect(() => {
-    if (!networkIds) return
+    if (!networkIds || !active) return
     const ids = networkIds.split(',').map(Number)
 
     warm(ids)
@@ -381,17 +472,17 @@ export function App({
     const id = window.setInterval(() => {
       warm(ids)
       setEnrichStamp((n) => n + 1)
-    }, 30_000)
+    }, ENRICH_MS)
     return () => {
       window.clearTimeout(settle)
       window.clearInterval(id)
     }
-  }, [networkIds])
+  }, [networkIds, active])
 
   /**
-   * Left join: fomo owns membership and order, Mobula only decorates. The user's prefs
-   * then narrow (filters) or re-order (an explicit sort) that stream — with defaults this
-   * is a no-op and fomo's order renders untouched.
+   * Per column: decorate, then the user's prefs narrow (filters) or re-order (an explicit
+   * sort) fomo's stream — with defaults this is a no-op and fomo's order renders untouched.
+   * Memoised per list so a trending frame does not re-sort bonding and graduated.
    *
    * The 100-row cap stays at the render boundary, exactly as fomo does it, but is applied
    * AFTER filtering: the whole store is filtered, so "min 10k MC" surfaces matching rows
@@ -399,41 +490,42 @@ export function App({
    * runs on the full list for the same reason — the holders filter needs metrics on every
    * candidate row, and metricsFor is a map lookup.
    */
-  const enriched = useMemo(() => {
-    void enrichStamp
-    const now = Date.now()
-    const build = (key: ListKey) =>
-      applyPrefs(
-        lists[key].map((token) => {
-          const metrics = metricsFor(token.key, token.networkId)
-          return metrics ? { ...token, metrics } : token
-        }),
-        colPrefs[key],
-        now,
-      ).slice(0, MAX_ROWS)
-    return {
-      'pre-graduated': build('pre-graduated'),
-      graduated: build('graduated'),
-      trending: build('trending'),
-    } satisfies Lists
-  }, [lists, enrichStamp, colPrefs])
+  const bondingRaw = lists['pre-graduated']
+  const bondingPrefs = colPrefs['pre-graduated']
+  const bonding = useMemo(
+    () => applyPrefs(decorate(bondingRaw), bondingPrefs, Date.now()).slice(0, MAX_ROWS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enrichStamp invalidates the decoration
+    [bondingRaw, bondingPrefs, enrichStamp],
+  )
+  const graduatedRaw = lists.graduated
+  const graduatedPrefs = colPrefs.graduated
+  const graduated = useMemo(
+    () => applyPrefs(decorate(graduatedRaw), graduatedPrefs, Date.now()).slice(0, MAX_ROWS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enrichStamp invalidates the decoration
+    [graduatedRaw, graduatedPrefs, enrichStamp],
+  )
+  const trendingRaw = lists.trending
+  const trendingPrefs = colPrefs.trending
+  const trending = useMemo(
+    () => applyPrefs(decorate(trendingRaw), trendingPrefs, Date.now()).slice(0, MAX_ROWS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enrichStamp invalidates the decoration
+    [trendingRaw, trendingPrefs, enrichStamp],
+  )
+  const enriched: Lists = { 'pre-graduated': bonding, graduated, trending }
 
   // Same left join for the watchlist cards: fomo owns the list, Mobula only decorates.
-  const watchEnriched = useMemo(() => {
-    void enrichStamp
-    if (watchTokens === null) return null
-    return watchTokens.map((token) => {
-      const metrics = metricsFor(token.key, token.networkId)
-      return metrics ? { ...token, metrics } : token
-    })
-  }, [watchTokens, enrichStamp])
+  const watchEnriched = useMemo(
+    () => (watchTokens === null ? null : decorate(watchTokens)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enrichStamp invalidates the decoration
+    [watchTokens, enrichStamp],
+  )
 
   const open = useCallback(
     (token: Token) => {
       // Navigation mechanics (client-side pushState with a full-load fallback) and the handoff
       // bookkeeping both live in content/index.tsx — this only builds the href. Nothing is
       // dismissed on the way out, so Back remounts the terminal.
-      onOpen(`/tokens/${token.chain}/${token.address}`)
+      onOpen(tokenPath(token.chain, token.address))
     },
     [onOpen],
   )
@@ -463,7 +555,7 @@ export function App({
               freshKeys={freshKeys}
               onLoadMoreAlerts={loadMoreAlerts}
               watchlist={watchEnriched}
-              watchlistLoading={watchLoading}
+              watchlistLoading={!watchFailed}
               feed={feedItems}
               feedLoading={feedLoading}
               feedHasMore={feedHasMore}
@@ -487,6 +579,7 @@ export function App({
               tokens={enriched[key]}
               total={lists[key].length}
               loading={totalRows === 0 && status !== 'unauthenticated'}
+              stale={stale}
               showBond={key === 'pre-graduated'}
               freshKeys={freshKeys}
               prefs={colPrefs[key]}

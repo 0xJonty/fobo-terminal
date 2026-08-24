@@ -12,6 +12,7 @@
  * already survives terminal -> token -> terminal.
  */
 
+import { withTimeout } from '~/lib/async'
 import { LIST_KEYS, type ListKey } from '~/lib/protocol'
 import type { Token } from '~/types/token'
 
@@ -262,7 +263,7 @@ export function sanitizeAllColumnPrefs(raw: unknown): AllColumnPrefs {
 /** Defaults when the extension context is gone (orphaned content script) or storage throws. */
 export async function readColumnPrefs(): Promise<AllColumnPrefs> {
   try {
-    const stored = await chrome.storage.sync.get(COLUMNS_KEY)
+    const stored = await withTimeout(chrome.storage.sync.get(COLUMNS_KEY), 1_000, {})
     return sanitizeAllColumnPrefs(stored[COLUMNS_KEY])
   } catch {
     return defaultAllPrefs()
@@ -285,7 +286,9 @@ export function saveColumnPrefs(all: AllColumnPrefs): void {
     pending = null
     if (!value) return
     try {
-      void chrome.storage.sync.set({ [COLUMNS_KEY]: { ...value, v: STORAGE_VERSION } })
+      chrome.storage.sync.set({ [COLUMNS_KEY]: { ...value, v: STORAGE_VERSION } }).catch(() => {
+        /* quota or context gone — prefs just do not persist this time */
+      })
     } catch {
       /* context already gone — prefs just do not persist this time */
     }

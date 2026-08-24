@@ -8,33 +8,23 @@
  * simply absent — fomo renders the same way.
  */
 
-import { fomoCall } from '~/lib/fomoApi'
+import { fomoCall, watchlist } from '~/lib/fomoApi'
 import { fromFomoRow, tokenKey, type Token } from '~/types/token'
-
-interface WatchlistWire {
-  watchlist?: unknown[]
-}
-
-/** fomo's own refetch interval for the watchlist ids. */
-export const WATCHLIST_POLL_MS = 60_000
 
 /** Null means the fetch failed (keep whatever is shown); [] means a genuinely empty list. */
 export async function fetchWatchlistTokens(): Promise<Token[] | null> {
-  const wire = await fomoCall<WatchlistWire>('/watchlist')
-  if (!wire || !Array.isArray(wire.watchlist)) return null
+  // The ids come through fomoApi's short cache, shared with the bottom-bar ticker.
+  const wire = await watchlist()
+  if (!wire) return null
 
-  const entries = wire.watchlist
-    .map((raw) => {
-      const row = raw as { tokenAddress?: unknown; networkId?: unknown; createdAt?: unknown }
-      if (typeof row?.tokenAddress !== 'string' || typeof row?.networkId !== 'number') return null
-      const addedAt = typeof row.createdAt === 'string' ? Date.parse(row.createdAt) : 0
-      return {
-        key: tokenKey(row.tokenAddress, row.networkId),
-        id: `${row.tokenAddress}:${row.networkId}`,
-        addedAtMs: Number.isFinite(addedAt) ? addedAt : 0,
-      }
-    })
-    .filter((entry): entry is { key: string; id: string; addedAtMs: number } => entry !== null)
+  const entries = wire.map((row) => {
+    const addedAt = row.createdAt ? Date.parse(row.createdAt) : 0
+    return {
+      key: tokenKey(row.tokenAddress, row.networkId),
+      id: `${row.tokenAddress}:${row.networkId}`,
+      addedAtMs: Number.isFinite(addedAt) ? addedAt : 0,
+    }
+  })
 
   if (entries.length === 0) return []
 

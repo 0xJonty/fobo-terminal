@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
-import { currentUser, holdings, type Holding } from '~/lib/fomoApi'
+import { type Holding } from '~/lib/fomoApi'
 import { tickerPrice } from '~/lib/format'
+import { useResource } from '~/lib/resource'
+import { balances } from '~/lib/session'
+import { tokenPath } from '~/lib/url'
 import { PercentChange } from '~/ui/PercentChange'
 
 /**
@@ -10,21 +12,16 @@ import { PercentChange } from '~/ui/PercentChange'
  * fomo's own design language, like everything else in fobo.
  *
  * Every number is fomo's: rows come from GET /v2/users/:id/balances (the endpoint fomo's own
- * positions list reads, polled on the same 10s cadence as the header), value is
- * shiftedBalance x priceUSD, and the pnl percent is fomo's open-position selector — realized
- * plus unrealized over the position's cost basis. Cash rows (USDC) are not holdings; rows fobo
- * cannot price are dropped, never padded. Clicking a chip opens the token on fomo.
+ * positions list reads, shared with the header through lib/session.ts on the same 10s
+ * cadence), value is shiftedBalance x priceUSD, and the pnl percent is fomo's open-position
+ * selector — realized plus unrealized over the position's cost basis. Cash rows (USDC) are
+ * not holdings; rows fobo cannot price are dropped, never padded. Clicking a chip opens the
+ * token on fomo.
  */
-
-/** fomo refetches balances every 10s in its header; the strip tracks the same clock. */
-const POLL_MS = 10_000
-
-/** Retry cadence for the current-user lookup while fomo is still booting its session. */
-const USER_RETRY_MS = 5_000
 
 function Chip({ holding, onNavigate }: { holding: Holding; onNavigate: (href: string) => void }) {
   const { token } = holding
-  const href = `/tokens/${token.chain}/${token.address}`
+  const href = tokenPath(token.chain, token.address)
   const change = holding.pnlPercent === undefined ? undefined : holding.pnlPercent * 100
   return (
     <a
@@ -36,7 +33,9 @@ function Chip({ holding, onNavigate }: { holding: Holding; onNavigate: (href: st
         onNavigate(href)
       }}
     >
-      {token.logo && <img className="holdbar-icon" src={token.logo} alt={token.symbol} />}
+      {token.logo && (
+        <img className="holdbar-icon" src={token.logo} alt={token.symbol} referrerPolicy="no-referrer" />
+      )}
       <span className="holdbar-symbol">{token.symbol}</span>
       <span className="holdbar-value">{tickerPrice(holding.valueUsd)}</span>
       <PercentChange change={change} />
@@ -45,39 +44,7 @@ function Chip({ holding, onNavigate }: { holding: Holding; onNavigate: (href: st
 }
 
 export function HoldingsBar({ onNavigate }: { onNavigate: (href: string) => void }) {
-  const [userId, setUserId] = useState<string | null>(null)
-  const [rows, setRows] = useState<Holding[] | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    let timer = 0
-    const lookup = () =>
-      void currentUser().then((user) => {
-        if (cancelled) return
-        if (user) setUserId(user.id)
-        else timer = window.setTimeout(lookup, USER_RETRY_MS)
-      })
-    lookup()
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!userId) return
-    let cancelled = false
-    const load = () =>
-      void holdings(userId).then((next) => {
-        if (!cancelled && next) setRows(next)
-      })
-    load()
-    const id = window.setInterval(load, POLL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
-    }
-  }, [userId])
+  const rows = useResource(balances)?.holdings ?? null
 
   // Nothing to show is no strip at all — an empty bar is dead space, and a guessed placeholder
   // would be worse than a blank.

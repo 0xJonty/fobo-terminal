@@ -9,6 +9,8 @@
  * as fomo behaves before its first interaction.
  */
 
+import { isTerminalVisible } from '~/lib/host'
+
 const SOUND_URL = 'https://fomo.family/sounds/alert-ding.mp3'
 const THROTTLE_MS = 2_000
 const FRESH_MS = 10_000
@@ -57,8 +59,7 @@ export function unlockAudio(): void {
 export function dingForAlert(createdAtMs: number): void {
   if (Math.abs(Date.now() - createdAtMs) > FRESH_MS) return
   if (document.hidden) return
-  const host = document.getElementById('fobo-terminal-root')
-  if (!host || host.dataset.foboHidden !== undefined) return
+  if (!isTerminalVisible()) return
   if (Date.now() - lastPlayedAt < THROTTLE_MS) return
   if (!context || context.state !== 'running') return
   if (!buffer) {

@@ -6,6 +6,8 @@
  * a card renders what it has and omits what it does not. We never invent a metric.
  */
 
+import { safeImageUrl } from '~/lib/url'
+
 /** networkId -> the chain slug fomo uses in its own URLs (/tokens/<chain>/<address>). */
 export const NETWORK_SLUG: Readonly<Record<number, string>> = {
   1: 'ethereum',
@@ -205,9 +207,9 @@ export function fromFomoRow(raw: unknown): Token | null {
     symbol: row?.token?.symbol ?? '',
     name: row?.token?.name ?? '',
     logo:
-      row?.token?.info?.imageSmallUrl ??
-      row?.token?.info?.imageThumbUrl ??
-      row?.token?.info?.imageLargeUrl,
+      safeImageUrl(row?.token?.info?.imageSmallUrl) ??
+      safeImageUrl(row?.token?.info?.imageThumbUrl) ??
+      safeImageUrl(row?.token?.info?.imageLargeUrl),
     priceUSD,
     marketCap: marketCapOf(row ?? {}, priceUSD),
     liquidity: num(row?.liquidity),

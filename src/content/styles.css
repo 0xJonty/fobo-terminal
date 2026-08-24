@@ -78,6 +78,15 @@
   min-width: 0;
 }
 .topbar-side-end { justify-content: flex-end; }
+.topbar-signedout {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--fobo-warning);
+  border: 1px solid color-mix(in srgb, var(--fobo-warning) 40%, transparent);
+  border-radius: 999px;
+  padding: 0.25rem 0.625rem;
+  white-space: nowrap;
+}
 
 .logo { height: 1.5rem; width: auto; display: block; }
 
@@ -503,12 +512,14 @@
   color: var(--fobo-accent);
   font: inherit;
   cursor: pointer;
+  text-decoration: none;
 }
 .feed-post-link:hover { text-decoration: underline; }
 
 /* ---------- alert rows ---------- */
 
 .alert-row {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 0.5rem;
@@ -517,16 +528,24 @@
   cursor: pointer;
   color: inherit;
   background: transparent;
-  border-left: 0;
-  border-right: 0;
-  border-top: 0;
   width: 100%;
   text-align: left;
   font: inherit;
 }
+.alert-row[data-static] { cursor: default; }
 .alert-row:hover { background: var(--fobo-surface-2); }
-.alert-row:focus-visible { outline: 2px solid var(--fobo-accent); outline-offset: -2px; }
+.alert-row:has(.alert-row-link:focus-visible) { outline: 2px solid var(--fobo-accent); outline-offset: -2px; }
 .alert-row[data-fresh] { animation: fobo-flash 900ms ease-out; }
+/* The stretched link under the row: the row IS the link, without nesting controls in it. */
+.alert-row-link {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.alert-row-link:focus-visible { outline: none; }
+/* Controls inside a row sit above the stretched link. */
+.alert-row .alert-handle-link,
+.alert-row .feed-post-link { position: relative; z-index: 1; }
 
 .alert-avatar {
   width: 1.75rem;
@@ -586,6 +605,7 @@
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
+  text-decoration: none;
 }
 .alert-handle-link:hover { color: var(--fobo-accent); }
 
@@ -710,6 +730,7 @@
   font-size: 0.625rem;
   color: var(--fobo-warning);
 }
+.column-stale { color: var(--fobo-red); }
 
 .column-body {
   flex: 1;
@@ -1040,25 +1061,6 @@
   background-size: 200% 100%;
   animation: fobo-shimmer 1.4s ease-in-out infinite;
   border-radius: var(--radius-sm, 0.25rem);
-}
-
-/* ---------- launcher (shown once the overlay is dismissed) ---------- */
-
-.launcher {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 1;
-  background: var(--fobo-accent);
-  color: #fff;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.5rem 0.875rem;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
 }
 
 /* ---------- motion ---------- */

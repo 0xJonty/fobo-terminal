@@ -11,16 +11,13 @@ import {
   WITHDRAW_ICON,
   type MenuIcon,
 } from '~/ui/headerMenuIcons'
-import {
-  currentUser,
-  headerNumbers,
-  searchTokens,
-  searchUsers,
-  type FomoTrader,
-  type FomoUser,
-  type HeaderNumbers,
-} from '~/lib/fomoApi'
+import { isAuthFailing, searchTokens, searchUsers, type FomoTrader } from '~/lib/fomoApi'
 import { usd, usdDelta, usdExact } from '~/lib/format'
+import { HIDDEN_EVENT } from '~/lib/host'
+import { useResource } from '~/lib/resource'
+import { balances, useCurrentUser } from '~/lib/session'
+import { profilePath, tokenPath } from '~/lib/url'
+import { isActive } from '~/lib/visibility'
 import type { Token } from '~/types/token'
 
 /**
@@ -28,13 +25,11 @@ import type { Token } from '~/types/token'
  * (fobo's wordmark, set in fomo's letterforms), the token/trader search centred, and on the
  * right the cash chip (Solana USDC + "Deposit more") and the portfolio chip (total, 24h pnl,
  * avatar) linking to the profile. All numbers come from fomo's API via fomo's own arithmetic —
- * see lib/fomoApi.ts.
+ * see lib/fomoApi.ts; the polling lives in lib/session.ts, shared with the holdings bar.
  */
 
 const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_MIN_CHARS = 2
-/** fomo refetches balances every 10s in its header; match it so the numbers track theirs. */
-const BALANCE_POLL_MS = 10_000
 
 /**
  * The fobo wordmark, built from fomo's actual logo geometry: the f is fomo's own path, and
@@ -79,7 +74,16 @@ function CircleImage({ src, label, className }: { src?: string; label: string; c
   useEffect(() => setFailed(false), [src])
 
   if (src && !failed) {
-    return <img className={className} src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
+    return (
+      <img
+        className={className}
+        src={src}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
+    )
   }
   return (
     <span className={`${className} circle-fallback`} aria-hidden="true">
@@ -115,6 +119,15 @@ function MenuItem({
   )
 }
 
+/** True when the key event originated in something the user types into. */
+function isEditableTarget(event: KeyboardEvent): boolean {
+  return event.composedPath().some((node) => {
+    if (!(node instanceof HTMLElement)) return false
+    const tag = node.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable
+  })
+}
+
 export function TopBar({
   onNavigate,
   onDeposit,
@@ -147,13 +160,16 @@ export function TopBar({
   }, [query])
 
   // fomo's "/" shortcut: focus the search from anywhere that is not already a text field.
+  // Only while the terminal is on screen — this app stays mounted (hidden) across a handoff,
+  // and an unguarded listener used to swallow every "/" typed into fomo's own inputs.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== '/') return
+      if (event.key !== '/' || event.isComposing) return
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (!isActive()) return
+      if (isEditableTarget(event)) return
       const input = inputRef.current
       if (!input) return
-      const root = input.getRootNode() as ShadowRoot
-      if (root.activeElement === input) return
       event.preventDefault()
       input.focus()
     }
@@ -176,43 +192,20 @@ export function TopBar({
   }
 
   /* ---- wallet / profile ---- */
-  const [user, setUser] = useState<FomoUser | null>(null)
-  const [numbers, setNumbers] = useState<HeaderNumbers | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void currentUser().then((u) => {
-      if (!cancelled) setUser(u)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!user) return
-    let cancelled = false
-    const load = () =>
-      void headerNumbers(user.id).then((n) => {
-        if (!cancelled && n) setNumbers(n)
-      })
-    load()
-    const id = window.setInterval(load, BALANCE_POLL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
-    }
-  }, [user])
+  const user = useCurrentUser()
+  const numbers = useResource(balances)?.numbers ?? null
+  // Shown only when the API told us the session is gone and there is nothing else to show.
+  const signedOut = user === null && isAuthFailing()
 
   const openToken = (token: Token) => {
     setQuery('')
     setResults(null)
-    onNavigate(`/tokens/${token.chain}/${token.address}`)
+    onNavigate(tokenPath(token.chain, token.address))
   }
   const openTrader = (trader: FomoTrader) => {
     setQuery('')
     setResults(null)
-    onNavigate(`/profile/${trader.userHandle}`)
+    onNavigate(profilePath(trader.userHandle))
   }
 
   /* ---- header dropdowns, mirroring fomo's own cash and profile menus ---- */
@@ -232,8 +225,8 @@ export function TopBar({
 
   useEffect(() => {
     const close = () => setMenu(null)
-    window.addEventListener('fobo:hidden', close)
-    return () => window.removeEventListener('fobo:hidden', close)
+    window.addEventListener(HIDDEN_EVENT, close)
+    return () => window.removeEventListener(HIDDEN_EVENT, close)
   }, [])
 
   /** Menu items that step aside and drive fomo's real header menu (see content/index.tsx). */
@@ -339,6 +332,11 @@ export function TopBar({
       </div>
 
       <div className="topbar-side topbar-side-end">
+        {signedOut && (
+          <span className="topbar-signedout" title="fomo's API rejected the session token. Sign in on fomo to restore balances and alerts.">
+            Signed out of fomo
+          </span>
+        )}
         {user && (
           <ul className="chips" ref={menusRef}>
             <li className="chip chip-cash">
@@ -404,7 +402,7 @@ export function TopBar({
                       label="Your profile"
                       onSelect={() => {
                         setMenu(null)
-                        onNavigate(`/profile/${user.userHandle}`)
+                        onNavigate(profilePath(user.userHandle!))
                       }}
                     />
                   )}

@@ -15,8 +15,9 @@ fobo shows all three at once.
 
 ## Status
 
-Early. The data layer and UI are implemented and the protocol is verified against the live API, but
-the extension has **not yet been loaded in a browser end-to-end** — that is the next step.
+Working and in daily use. Every endpoint, socket frame and formula is verified against the live
+API and fomo's own bundle; the terminal is exercised end-to-end in Chrome after each change (see
+`CLAUDE.md` for the verification tooling).
 
 - [x] MV3 scaffold (Vite + CRXJS + React + TypeScript)
 - [x] WebSocket client for fomo's three token lists, with its challenge handshake
@@ -44,16 +45,21 @@ the extension has **not yet been loaded in a browser end-to-end** — that is th
       (highest or lowest first), filter by chain and min/max market cap, liquidity, holders,
       volume, and token age; saved in `chrome.storage.sync` so they survive reloads. The
       Graduated column defaults to newest-first
-- [ ] Manual verification in Chrome
-- [ ] More side-panel tabs (fomo's Tokens / Leaderboard / Feed)
+- [x] Visibility-aware: every poller, the Mobula warm-up and the socket reducer pause while
+      the terminal is hidden behind fomo's own pages or the tab is in the background, and
+      resume (with an immediate refresh) when it comes back
+- [x] Socket liveness: handshake deadline, idle watchdog, reconnect on `online` / tab focus,
+      and a "stale" badge in the column headers when frames stop arriving
+- [x] Unit tests (`vitest`) for the protocol-mirroring modules and `eslint`; both run as part
+      of `npm run build`
+- [ ] More side-panel tabs (fomo's Tokens / Leaderboard)
 
 ## What it does
 
 Three columns — **Bonding**, **Graduated**, **Trending** — fed live from fomo's own
 `wss://prod-api.fomo.family/ws`, using the Privy session already in your browser. Cards show market
 cap, volume, liquidity, age, price change, trade pressure, and holder-concentration metrics
-(top-10 %, dev holdings, snipers, insiders, bundled supply), with a bonding-curve progress bar on
-the Bonding column.
+(holder count, top-10 %, dev holdings), with a bonding-curve progress bar on the Bonding column.
 
 Clicking a card opens that token on fomo. That is the only action a card has.
 
@@ -65,9 +71,9 @@ from `GET /feed/tradingActivity` and updated live over the same WebSocket (topic
 `trading_activity`), both mirrored from fomo's own client. Scrolling the panel pages further
 back; clicking a row opens the token, clicking a trader opens their profile.
 
-The toolbar popup controls it: on/off, left or right side (default right), and width
-(280–480 px). Rows on chains fobo cannot name are dropped rather than mislabelled, and a row
-only ever shows fields the feed actually carried.
+The toolbar popup controls on/off, left or right side (default right) and the alert sound;
+the width (280–560 px) is dragged on the panel's inner edge. Rows on chains fobo cannot name are
+dropped rather than mislabelled, and a row only ever shows fields the feed actually carried.
 
 ### Bottom bar
 
@@ -90,22 +96,40 @@ Clicking a chip opens the token on fomo.
 
 ### Scope limits
 
-- **Wallet is never read, touched, or displayed.** No balances, no keys, no signing, no trade
-  submission. Cards are read-only and hand off to fomo for anything transactional.
+- **Read-only.** Cash, portfolio value and open positions are *displayed* from fomo's own API
+  (the same endpoints fomo's header and positions list read); there are no keys, no signing and
+  no trade submission. Anything transactional (deposit, withdraw, buy) hands off to fomo's own
+  UI.
 - Profile pages and coin pages are left exactly as fomo ships them.
-- Nothing is injected into fomo's JavaScript context. fobo renders into a shadow root on a sibling
-  element and opens its own API connection, so it never patches `fetch`, `WebSocket`, or React's
-  DOM. Disabling the extension leaves the site untouched.
+- Nothing is injected into fomo's JavaScript context. fobo renders into a **closed** shadow root
+  on a sibling element and opens its own API connection, so it never patches `fetch`,
+  `WebSocket`, or React's DOM — and fomo's scripts cannot reach into the terminal's DOM either.
+  Disabling the extension leaves the site untouched.
 - The Privy JWT is read from the page's own `localStorage` at connect time, sent only to fomo's own
   API, and is never persisted by the extension or logged.
+- **Third parties.** Besides fomo's API, the extension talks to two other hosts from your
+  browser: `fomo-api.mobula.io` (Mobula's public Pulse endpoint, for holder/risk metrics —
+  polled per chain on screen while the terminal is visible) and `status.fomo.family` (fomo's
+  status page). Mobula therefore sees your IP address and that you are on fomo; nothing else is
+  sent to it. If either host is blocked or fomo's CSP changes, the cards simply omit those
+  metrics and a single warning is logged.
+- **The address bar** shows `fomo.family/fobo-terminal` while the terminal is visible (a display
+  mask; fomo's router never sees it). Copying that URL gives a link that only works with the
+  extension installed — anyone else lands on fomo's 404 view. Copy the token's own link from a
+  card (right-click → copy link) when sharing.
 
 ## Build
 
 ```bash
 npm install
-npm run build     # one-off build
-npm run watch     # rebuild on every save
+npm run build     # typecheck + lint + tests, then a one-off build
+npm run watch     # rebuild on every save (no checks)
+npm run check     # typecheck + lint + tests only
 ```
+
+`npm run build` refuses to write into an output directory that is not named `dist`, is not
+empty, and holds no `manifest.json` — a guard against a mistyped `FOBO_OUT_DIR` wiping something
+else.
 
 Then load it:
 

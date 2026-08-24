@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { usd, percent } from '~/lib/format'
+import { profilePath, tokenPath } from '~/lib/url'
+import { useActiveInterval } from '~/lib/visibility'
 import type { AlertItem, MultiAlert, SwapAlert, ThesisAlert, MilestoneAlert } from '~/lib/alerts'
 
 /**
@@ -9,6 +11,11 @@ import type { AlertItem, MultiAlert, SwapAlert, ThesisAlert, MilestoneAlert } fr
  * this renders only the scrolling list. Row content mirrors what fomo's own alert rows show
  * (trader, action, amount, token, market cap), and a row renders what its item has, never a
  * guessed figure.
+ *
+ * Row anatomy: a plain block with a stretched anchor underneath (the "card link" pattern).
+ * Rows used to be <button>s containing further <button>s, which HTML forbids and screen
+ * readers flatten; now the row link is a real <a> (middle-click works), and the trader /
+ * post links inside it sit above the overlay as their own controls.
  */
 
 /** Alert rows vary in height (theses carry text); this is the virtualiser's starting guess. */
@@ -43,7 +50,16 @@ export function Avatar({ src, label }: { src?: string; label?: string }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [src])
   if (src && !failed) {
-    return <img className="alert-avatar" src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
+    return (
+      <img
+        className="alert-avatar"
+        src={src}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
+    )
   }
   return (
     <span className="alert-avatar circle-fallback" aria-hidden="true">
@@ -52,16 +68,54 @@ export function Avatar({ src, label }: { src?: string; label?: string }) {
   )
 }
 
-function TokenLine({
+/** A stack of trader avatars for multi-user rows, or a placeholder when none carry one. */
+export function AvatarStack({
+  traders,
+}: {
+  traders: { userHandle?: string; displayName?: string; userImageUrl?: string }[]
+}) {
+  const shown = traders.filter((t) => t.userImageUrl || t.userHandle || t.displayName)
+  return (
+    <span className="alert-stack">
+      {shown.length > 0 ? (
+        shown.map((t, i) => (
+          <img
+            key={t.userHandle ?? i}
+            className="alert-stack-avatar"
+            src={t.userImageUrl}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            style={{ zIndex: shown.length - i }}
+          />
+        ))
+      ) : (
+        <span className="alert-avatar circle-fallback" aria-hidden="true">
+          ∗
+        </span>
+      )}
+    </span>
+  )
+}
+
+export function TokenLine({
   item,
   children,
 }: {
-  item: AlertItem
+  item: { tokenImageUrl?: string; ticker?: string; marketCap?: number }
   children?: React.ReactNode
 }) {
   return (
     <span className="alert-token">
-      {item.tokenImageUrl && <img className="alert-token-logo" src={item.tokenImageUrl} alt="" loading="lazy" />}
+      {item.tokenImageUrl && (
+        <img
+          className="alert-token-logo"
+          src={item.tokenImageUrl}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      )}
       {item.ticker && <span className="alert-ticker">{item.ticker}</span>}
       {children}
       {item.marketCap !== undefined && (
@@ -80,17 +134,41 @@ export function TraderName({
 }) {
   const name = item.userHandle ?? item.displayName
   if (!name) return <span className="alert-handle">someone</span>
-  if (!item.userHandle) return <span className="alert-handle">{name}</span>
+  const handle = item.userHandle
+  if (!handle) return <span className="alert-handle">{name}</span>
+  const href = profilePath(handle)
   return (
-    <button
+    <a
       className="alert-handle alert-handle-link"
+      href={href}
       onClick={(event) => {
         event.stopPropagation()
-        onOpenProfile(item.userHandle!)
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
+        event.preventDefault()
+        onOpenProfile(handle)
       }}
     >
       {name}
-    </button>
+    </a>
+  )
+}
+
+/**
+ * The stretched link that makes the whole row open its destination. Modified clicks fall
+ * through to the browser (new tab); plain clicks navigate in-app.
+ */
+export function RowLink({ href, label, onOpen }: { href: string; label: string; onOpen: (href: string) => void }) {
+  return (
+    <a
+      className="alert-row-link"
+      href={href}
+      aria-label={label}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
+        event.preventDefault()
+        onOpen(href)
+      }}
+    />
   )
 }
 
@@ -121,27 +199,9 @@ function SwapRow({
 }
 
 function MultiRow({ item, now }: { item: MultiAlert; now: number }) {
-  const traders = item.topTraders.filter((t) => t.userImageUrl || t.userHandle || t.displayName)
   return (
     <>
-      <span className="alert-stack">
-        {traders.length > 0 ? (
-          traders.map((t, i) => (
-            <img
-              key={t.userHandle ?? i}
-              className="alert-stack-avatar"
-              src={t.userImageUrl}
-              alt=""
-              loading="lazy"
-              style={{ zIndex: traders.length - i }}
-            />
-          ))
-        ) : (
-          <span className="alert-avatar circle-fallback" aria-hidden="true">
-            ∗
-          </span>
-        )}
-      </span>
+      <AvatarStack traders={item.topTraders} />
       <div className="alert-lines">
         <span className="alert-head">
           <span className="alert-handle">
@@ -251,12 +311,9 @@ export function AlertsPanel({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Keep the relative timestamps moving while the list is quiet.
+  // Keep the relative timestamps moving while the list is quiet — and on screen.
   const [, tick] = useReducer((n: number) => n + 1, 0)
-  useEffect(() => {
-    const id = window.setInterval(tick, CLOCK_MS)
-    return () => window.clearInterval(id)
-  }, [])
+  useActiveInterval(tick, CLOCK_MS)
   const now = Date.now()
 
   const virtualizer = useVirtualizer({
@@ -275,8 +332,7 @@ export function AlertsPanel({
     if (lastVisible >= alerts.length - 5) onLoadMore()
   }, [lastVisible, hasMore, loadingMore, alerts.length, onLoadMore])
 
-  const openToken = (item: AlertItem) => onOpen(`/tokens/${item.chain}/${item.tokenAddress}`)
-  const openProfile = (handle: string) => onOpen(`/profile/${handle}`)
+  const openProfile = (handle: string) => onOpen(profilePath(handle))
 
   return (
     <div className="column-body" ref={scrollRef}>
@@ -304,18 +360,19 @@ export function AlertsPanel({
                     transform: `translateY(${row.start}px)`,
                   }}
                 >
-                  <button
-                    className="alert-row"
-                    data-fresh={freshKeys.has(item.id) || undefined}
-                    onClick={() => openToken(item)}
-                  >
+                  <div className="alert-row" data-fresh={freshKeys.has(item.id) || undefined}>
+                    <RowLink
+                      href={tokenPath(item.chain, item.tokenAddress)}
+                      label={`Open ${item.ticker ?? 'token'} on fomo`}
+                      onOpen={onOpen}
+                    />
                     {item.kind === 'swap' && <SwapRow item={item} now={now} onOpenProfile={openProfile} />}
                     {item.kind === 'multi' && <MultiRow item={item} now={now} />}
                     {item.kind === 'thesis' && <ThesisRow item={item} now={now} onOpenProfile={openProfile} />}
                     {item.kind === 'milestone' && (
                       <MilestoneRow item={item} now={now} onOpenProfile={openProfile} />
                     )}
-                  </button>
+                  </div>
                 </div>
               )
             })}

@@ -11,6 +11,7 @@ import {
   type SortField,
 } from '~/lib/columnPrefs'
 import type { ListKey } from '~/lib/protocol'
+import { HIDDEN_EVENT } from '~/lib/host'
 
 /**
  * The per-column filter/sort control: a funnel button in the column header and, when open,
@@ -103,8 +104,8 @@ export function ColumnControls({
   // The terminal hides (not unmounts) on a handoff; do not come back with a stale open panel.
   useEffect(() => {
     const close = () => setOpen(false)
-    window.addEventListener('fobo:hidden', close)
-    return () => window.removeEventListener('fobo:hidden', close)
+    window.addEventListener(HIDDEN_EVENT, close)
+    return () => window.removeEventListener(HIDDEN_EVENT, close)
   }, [])
 
   const cycleSort = (field: SortField) => {
