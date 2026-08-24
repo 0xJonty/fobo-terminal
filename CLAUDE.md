@@ -135,7 +135,19 @@ branch that suppressed the mount. No line at all means the content script never 
 ## Session tooling quirks (this machine)
 
 - Extension reloads cannot be automated (chrome:// blocked). Detect a reload with a
-  background Monitor polling a new-build marker class in the shadow root, then E2E.
+  background Monitor polling `data-fobo-build` on the host element (`vite.config.ts` stamps
+  `__FOBO_BUILD__`; read the stamp from the emitted bundle), then E2E. The shadow root is
+  CLOSED, so nothing inside it is inspectable from the page — while the extension is
+  mid-reload/disabled the host and launcher are both absent (not a bug).
+- Content-script fetches do NOT appear in the page's `performance.getEntriesByType('resource')`
+  and `opencli browser <s> console` captures nothing. The only window into the terminal's own
+  traffic is the host's `data-fobo-requests` (per-endpoint counters), `data-fobo-socket`,
+  `data-fobo-last-frame` and `data-fobo-active`. The Resource Timing buffer also caps at 250
+  entries and fills during fomo's boot — clear/enlarge it before measuring fomo's traffic.
+- fomo's own coin page re-reads `/watchlist` + `/proxy/filterTokens` every ~2.5 s and
+  `/balances` every 10 s on its own; do not attribute those to the extension.
+- Tab-scoped test residue: Esc leaves `fobo:dismissed=1` and panel tests leave
+  `fobo:panel-view` in the session tab's sessionStorage — clear them before mount checks.
 - Main-world injection harness (E2E extension code WITHOUT reloading the extension):
   build the content script standalone (vite lib-mode IIFE; the config file must sit in
   the project root or `import 'vite'` fails), base64 the bundle, transfer in <100KB

@@ -664,3 +664,27 @@ line, the new home is named so the entry above can be read against the code.
 | M1 | Fixed | README Status, What it does, Alerts panel, Scope limits and Build sections rewritten to match the code |
 | M2 | Fixed | `cacheStamp`, `.launcher` CSS and the unused `tradeUsd` parameter removed; `HOST_ID` lives in `lib/host.ts` |
 | M3 | Fixed | `eslint` (typescript-eslint + react-hooks) and `vitest` (44 tests across `listStore`, `columnPrefs`, `alerts`, `feed`, `format`, `url`) run via `npm run check`, which `npm run build` invokes first |
+
+### Live verification (2026-08-24, builds `mt6n4aqc` → `mt6o0nwa`)
+
+Driven through the opencli harness against the real logged-in session; the terminal's own
+traffic was read from the new `data-fobo-requests` counters on the host element (see below).
+
+- Mount, closed shadow root, URL/title mask, Back-remount, Navigation-API route pickup
+  (~320 ms round-trip, consistently under the 1 s fallback poll) — all confirmed.
+- Pollers: at boot `/v2/users/current` ×1 (was ×3), `/watchlist` ×1 shared by ticker and
+  panel, `/balances` on a single 10 s clock, Mobula `pulse` ×1 per chain, status ×1. Hidden
+  for 30 s: **zero** requests, `active=false`, socket kept warm. Summon: immediate refresh.
+- `/` typed into fomo's own inputs while hidden is no longer swallowed; from the body it
+  focuses the terminal only while visible.
+- Render suppression: the first build missed at boot (fomo's tree was still < 100 nodes at
+  `document_idle`) — fixed in `f6d0aed` (incremental, re-run on route ticks); confirmed
+  suppressed 3 s after load, restored on hide, re-applied on show.
+- Not live-testable from outside the closed shadow root and left at unit/code level: the
+  alerts-filter draft/commit, the popup read-modify-write, row anatomy, the signed-out hint,
+  and the socket watchdog (needs a network drop).
+
+Two harness facts learned the hard way, recorded in CLAUDE.md: content-script fetches never
+appear in the page's Resource Timing (earlier network counts were fomo's own traffic), and
+`opencli console` captures nothing. The host element now carries `data-fobo-requests`,
+`data-fobo-socket`, `data-fobo-last-frame` and `data-fobo-active` for this purpose.
