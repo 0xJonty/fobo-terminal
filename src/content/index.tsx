@@ -339,12 +339,19 @@ let suppressedRender: { el: HTMLElement; value: string }[] | null = null
 const SUPPRESS_MIN_NODES = 100
 const LIVE_REGION = '[aria-live], [role="status"], [role="alert"], [role="log"], [data-sonner-toaster], [data-radix-portal]'
 
+/**
+ * Idempotent and incremental: called on every mount sync and every route tick while the
+ * terminal is visible. At document_idle fomo's app tree is often still tiny (verified live:
+ * the first mount found nothing above the threshold), so a one-shot pass left the whole page
+ * rendering behind the terminal. Children already suppressed are skipped; the rest are
+ * re-measured until they cross the threshold.
+ */
 function suppressPageRender(): void {
-  if (suppressedRender) return
-  const entries: { el: HTMLElement; value: string }[] = []
+  const entries = suppressedRender ?? []
   for (const el of document.body.children) {
     if (!(el instanceof HTMLElement)) continue
     if (el.id === HOST_ID || el.id === LAUNCHER_ID) continue
+    if (entries.some((entry) => entry.el === el)) continue
     if (el.matches(LIVE_REGION)) continue
     if (el.querySelectorAll('*').length < SUPPRESS_MIN_NODES) continue
     entries.push({ el, value: el.style.contentVisibility })
@@ -694,6 +701,8 @@ function watchRoute(): void {
       // intent claims the current page from here; sync's mount branch then clears it.
       // Not while the terminal is visible (nothing to claim) and not on `/` itself —
       // the redirect off `/` always produces a real path change for the branch below.
+      // fomo's tree grows after our first mount; keep suppressing the big subtree once it is.
+      if (host && host.dataset.foboHidden === undefined && suppressedRender !== null) suppressPageRender()
       if (!isHomePath(path) && isPendingHome() && !(host && host.dataset.foboHidden === undefined)) {
         markTerminal(path)
         void sync()
