@@ -132,6 +132,28 @@ branch that suppressed the mount. No line at all means the content script never 
   (navigate/Esc/unmount); a document that boots on the masked address is driven home
   (recoverFromMaskedLoad) so fomo never sits on its 404.
 
+## Codebase rules (post-audit architecture)
+
+- Polled data goes through lib/visibility.ts (active signal) + lib/resource.ts /
+  lib/session.ts (shared, paused while terminal hidden or tab backgrounded). Never add a
+  bare setInterval fetcher in a component; new endpoints join session.ts.
+- `npm run build` runs `npm run check` (tsc + eslint + vitest) first. Tests: src/lib/*.test.ts,
+  jsdom; vitest.config.ts is separate from vite.config.ts on purpose (build config loads
+  CRXJS and asserts on outDir).
+- eslint: only react-hooks/rules-of-hooks + exhaustive-deps; the plugin's React-Compiler
+  rules (set-state-in-effect, refs, purity) are deliberately off — codebase uses
+  reset-on-prop-change and latest-ref idioms.
+- `__FOBO_BUILD__` comes from vite `define` (declared in src/vite-env.d.ts; vitest defines
+  it 'test') — stamped as data-fobo-build on the host.
+
+## Chrome Web Store
+
+- `npm run package` → release/fobo-terminal-<version>.zip (dep-free zip writer in
+  scripts/package.mjs — no `zip` CLI on this machine; maps excluded, manifest at root).
+  Bump package.json version first — the store refuses reused versions.
+- Listing copy, permission justifications, data-usage answers, reviewer instructions:
+  store/LISTING.md. Privacy policy: PRIVACY.md (must be hosted publicly). Images in store/.
+
 ## Session tooling quirks (this machine)
 
 - Extension reloads cannot be automated (chrome:// blocked). Detect a reload with a
@@ -148,6 +170,11 @@ branch that suppressed the mount. No line at all means the content script never 
   `/balances` every 10 s on its own; do not attribute those to the extension.
 - Tab-scoped test residue: Esc leaves `fobo:dismissed=1` and panel tests leave
   `fobo:panel-view` in the session tab's sessionStorage — clear them before mount checks.
+- opencli eval takes ONE expression — wrap multi-statement scripts in `(function(){...})()`
+  or it throws SyntaxError. `screenshot --width/--height` overrides the viewport (store
+  shots at 1280x800).
+- Canvas Path2D + toDataURL inside opencli eval rasterises SVG path data to base64 PNG —
+  how the icons/promo tiles were generated from the wordmark paths in TopBar.tsx.
 - Main-world injection harness (E2E extension code WITHOUT reloading the extension):
   build the content script standalone (vite lib-mode IIFE; the config file must sit in
   the project root or `import 'vite'` fails), base64 the bundle, transfer in <100KB
