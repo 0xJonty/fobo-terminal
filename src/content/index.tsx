@@ -6,7 +6,6 @@
  * root on it. Removing the host restores the page exactly.
  */
 
-import launcherIcon from '~/assets/icon-48.png?inline'
 import { StrictMode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { App } from '~/content/App'
@@ -183,13 +182,7 @@ function showLauncher(): void {
   if (launcher || document.getElementById(LAUNCHER_ID)) return
   const button = document.createElement('button')
   button.id = LAUNCHER_ID
-  button.title = 'fobo terminal'
-  button.setAttribute('aria-label', 'fobo terminal')
-  const icon = document.createElement('img')
-  icon.src = launcherIcon
-  icon.alt = ''
-  icon.setAttribute('style', 'display:block;width:2.5rem;height:2.5rem')
-  button.append(icon)
+  button.textContent = 'fobo'
   button.setAttribute(
     'style',
     [
@@ -197,13 +190,15 @@ function showLauncher(): void {
       'right:1rem',
       'bottom:1rem',
       'z-index:2147483000',
-      'background:transparent',
+      'background:var(--color-accent-primary,#516af6)',
+      'color:#fff',
       'border:0',
       'border-radius:999px',
-      'padding:0',
-      'line-height:0',
+      'padding:0.5rem 0.875rem',
+      'font-size:0.75rem',
+      'font-weight:600',
       'cursor:pointer',
-      'filter:drop-shadow(0 4px 16px rgb(0 0 0 / 0.4))',
+      'box-shadow:0 4px 16px rgb(0 0 0 / 0.4)',
     ].join(';'),
   )
   button.addEventListener('click', () => {

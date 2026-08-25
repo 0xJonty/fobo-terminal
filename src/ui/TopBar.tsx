@@ -13,7 +13,6 @@ import {
 } from '~/ui/headerMenuIcons'
 import { useClickAway } from '~/lib/clickAway'
 import { isAuthFailing, searchTokens, searchUsers, type FomoTrader } from '~/lib/fomoApi'
-import iconUrl from '~/assets/icon-48.png?inline'
 import { usd, usdDelta, usdExact } from '~/lib/format'
 import { HIDDEN_EVENT } from '~/lib/host'
 import { useResource } from '~/lib/resource'
@@ -24,7 +23,7 @@ import type { Token } from '~/types/token'
 
 /**
  * A one-to-one recreation of fomo's own top bar, measured off the live page: logo left
- * (the fobo icon mark), the token/trader search centred, and on the
+ * (fobo's wordmark, set in fomo's letterforms), the token/trader search centred, and on the
  * right the cash chip (Solana USDC + "Deposit more") and the portfolio chip (total, 24h pnl,
  * avatar) linking to the profile. All numbers come from fomo's API via fomo's own arithmetic —
  * see lib/fomoApi.ts; the polling lives in lib/session.ts, shared with the holdings bar.
@@ -34,12 +33,40 @@ const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_MIN_CHARS = 2
 
 /**
- * The fobo mark. The provided icon artwork (fobo-icon.png at the repo root, resized into
- * src/assets) is inlined as a data URI: the top bar lives in the page's DOM, so an
- * extension URL would need web_accessible_resources — inlining keeps the manifest narrow.
+ * The fobo wordmark, built from fomo's actual logo geometry: the f is fomo's own path, and
+ * every bowl reuses fomo's o dimensions (outer 9.21x8.94 at y 15.06, counter 4.32x4.93), so
+ * the mark sits in the bar exactly like the original. Only the letters changed.
  */
+function ring(cx: number): string {
+  return (
+    `M${(cx - 9.2125).toFixed(3)} 15.0597` +
+    'a9.2125 8.9403 0 1 1 18.425 0' +
+    'a9.2125 8.9403 0 1 1 -18.425 0Z' +
+    `M${(cx - 4.3173).toFixed(3)} 15.0597` +
+    'a4.3173 4.9292 0 1 0 8.6346 0' +
+    'a4.3173 4.9292 0 1 0 -8.6346 0Z'
+  )
+}
+
+const FOBO_F =
+  'M0.000730533 4.96351C0.000730533 1.80193 1.70048 0 5.3036 0H8.96C9.08115 0 9.17895 0.0977959 ' +
+  '9.17895 0.218946V3.92862C9.17895 4.04977 9.08115 4.14757 8.96 4.14757H6.11954C5.20143 4.14757 ' +
+  '4.79346 4.55554 4.79346 5.43935V6.10421C4.79346 6.22536 4.89125 6.32316 5.0124 6.32316H8.74106C8.86221 ' +
+  '6.32316 8.96 6.42096 8.96 6.54211V10.2175C8.96 10.3386 8.86221 10.4364 8.74106 10.4364H5.0124C4.89125 ' +
+  '10.4364 4.79346 10.5342 4.79346 10.6554V23.5776C4.79346 23.6987 4.69566 23.7965 4.57451 ' +
+  '23.7965H0.218946C0.0977959 23.7965 0 23.6987 0 23.5776V4.96351H0.000730533Z'
+
+const FOBO_B = 'M28.2 0.219h4.79v23.577h-4.79Z' + ring(37.4125)
+
 function FoboLogo() {
-  return <img src={iconUrl} className="logo" alt="fobo" />
+  return (
+    <svg viewBox="0 0 66.1 24" fill="none" className="logo" aria-label="fobo">
+      <path d={FOBO_F} fill="#CBD0EB" />
+      <path d={ring(18.0186)} fill="#CBD0EB" />
+      <path d={FOBO_B} fill="#CBD0EB" />
+      <path d={ring(56.83)} fill="#CBD0EB" />
+    </svg>
+  )
 }
 
 /** Round image with an initials fallback, used by results and the profile chip. */

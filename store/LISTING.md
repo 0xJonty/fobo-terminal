@@ -54,7 +54,7 @@ How it works
 • Reads fomo's own API and websocket — the same data fomo's pages show, nothing invented.
 • Holder metrics come from Mobula's public Pulse endpoint; everything else is fomo's.
 • Preferences (panel side/width, sound, column filters) are saved to your Chrome profile.
-• Toolbar icon toggles it; Esc dismisses it; the round fobo icon button brings it back.
+• Toolbar icon toggles it; Esc dismisses it; the fobo button brings it back.
 
 Not affiliated with, endorsed by or maintained by fomo.family. Uses fomo's public web API
 under your own account; if fomo changes its API, features may degrade until updated.
@@ -120,7 +120,7 @@ password / login method) or this note:
 The extension only activates on https://fomo.family/ for a logged-in user. Without a
 fomo.family account the page shows fomo's marketing site and the extension stays inactive
 by design. To review: log in to fomo.family, open https://fomo.family/ — the terminal
-mounts over the landing page. Esc dismisses it; the round fobo icon button (bottom right) restores it; the toolbar
+mounts over the landing page. Esc dismisses it; the "fobo" button (bottom right) restores it; the toolbar
 popup toggles it off entirely.
 ```
 
