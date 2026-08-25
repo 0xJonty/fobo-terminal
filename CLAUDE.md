@@ -195,6 +195,23 @@ branch that suppressed the mount. No line at all means the content script never 
 - Emitted bundles write string literals as BACKTICK template literals (esbuild), so grepping
   dist for '"/token"' or single-quoted strings finds nothing — match the bare substring or
   backticks when verifying a build contains a change.
+- Reloading the extension does NOT re-inject content scripts into open tabs: the orphaned
+  old script keeps running (stale data-fobo-build, socket still live). Force
+  location.reload() via eval before checking for the new build stamp.
+- opencli's window stays visibilityState:hidden (--window foreground does not fix it), so
+  data-fobo-active is false and all visibility-gated polling (session.ts, mobula, backfill)
+  stays paused. Verify gated features with a background until-loop on data-fobo-requests;
+  it fires when the user actually views the tab.
+- Page-world error capture that works: eval-install a collector (patch console.error/warn,
+  window "error"+"unhandledrejection" listeners, wrap window.fetch for !ok statuses) into a
+  window var and read it back after clicking around. Sees fomo's errors only — the
+  extension's isolated world is invisible to it.
+- Raw socket payloads: eval-open a second WebSocket to wss://prod-api.fomo.family/ws from
+  page context (challengeResponse with the privy:token, subscribe one topic), collect frames
+  into a window var, read back after a sleep.
+- Image work: python3 PIL is installed; Windows fonts at /mnt/c/Windows/Fonts (arialbd.ttf
+  yes, segoeui.ttf no). Icons + promo tiles are generated from fobo-icon.png (repo root,
+  branding source of truth) with PIL — no ImageMagick on this machine.
 
 - Output-compression hooks mangle multi-file grep results ("N matches in M files" interleaving)
   and piped opencli output sometimes emits a spurious "claude native binary not installed"
