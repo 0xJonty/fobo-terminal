@@ -23,6 +23,7 @@ import {
   type AllColumnPrefs,
   type ColumnPrefs,
 } from '~/lib/columnPrefs'
+import { backfillFor, mergeToken, warmBackfill } from '~/lib/backfill'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { setDiag } from '~/lib/host'
@@ -62,12 +63,14 @@ const STALE_AFTER_MS = 30_000
 /** Hidden-terminal diff queue ceiling before a forced flush. */
 const MAX_QUEUED_DIFFS = 1_000
 
-/** Left join: fomo owns membership and order, Mobula only decorates. */
+/**
+ * Left join: fomo owns membership and order; decoration fills what a row is missing —
+ * first from fomo's own filterTokens backfill (trending rows arrive thin), then Mobula.
+ */
 function decorate(tokens: readonly Token[]): Token[] {
-  return tokens.map((token) => {
-    const metrics = metricsFor(token.key, token.networkId)
-    return metrics ? { ...token, metrics } : token
-  })
+  return tokens.map((token) =>
+    mergeToken(token, backfillFor(token.key), metricsFor(token.key, token.networkId)),
+  )
 }
 
 export function App({
@@ -471,6 +474,27 @@ export function App({
     return [...ids].sort().join(',')
   }, [lists, watchTokens])
 
+  // The backfill needs the rows themselves (to see which still miss fields), but effects
+  // must not re-run on every socket frame — a ref carries the latest list into the ticks.
+  const trendingRef = useRef<Token[]>(EMPTY.trending)
+  useEffect(() => {
+    trendingRef.current = lists.trending
+  }, [lists])
+
+  // Trending MEMBERSHIP drives the backfill: new rows arrive thin and want a fetch soon,
+  // while `update` frames only replace known rows (the sorted key signature filters the
+  // per-frame re-order churn out of the effect key).
+  const trendingKeys = useMemo(
+    () => lists.trending.map((token) => token.key).sort().join(' '),
+    [lists.trending],
+  )
+  useEffect(() => {
+    if (!trendingKeys || !active) return
+    warmBackfill(trendingRef.current)
+    const settle = window.setTimeout(() => setEnrichStamp((n) => n + 1), 2_000)
+    return () => window.clearTimeout(settle)
+  }, [trendingKeys, active])
+
   useEffect(() => {
     if (!networkIds || !active) return
     const ids = networkIds.split(',').map(Number)
@@ -479,6 +503,7 @@ export function App({
     const settle = window.setTimeout(() => setEnrichStamp((n) => n + 1), 2_000)
     const id = window.setInterval(() => {
       warm(ids)
+      warmBackfill(trendingRef.current)
       setEnrichStamp((n) => n + 1)
     }, ENRICH_MS)
     return () => {

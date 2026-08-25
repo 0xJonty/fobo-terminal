@@ -48,7 +48,7 @@ export function normalizeKey(key: string): string {
   return key.startsWith('0x') ? key.toLowerCase() : key
 }
 
-/** Risk/holder metrics. Sourced from Mobula; every field may be absent. */
+/** Risk/holder metrics. Sourced from fomo's own rows and Mobula; every field may be absent. */
 export interface TokenMetrics {
   holdersCount?: number
   top10Holdings?: number
@@ -130,6 +130,11 @@ interface FomoRow {
   change1?: string | number
   change24?: string | number
   createdAt?: number
+  holders?: string | number
+  buyCount1?: string | number
+  sellCount1?: string | number
+  txnCount1?: string | number
+  volume1?: string | number
 }
 
 function num(value: unknown): number | undefined {
@@ -183,6 +188,24 @@ function createdAtSeconds(value: unknown): number | undefined {
 }
 
 /**
+ * First-party metrics fomo itself puts on a list row. Trending socket rows carry `holders`
+ * on every frame; full filterTokens rows add the 1-hour trade counts (buyCount1 /
+ * sellCount1 / txnCount1 / volume1 — the suffix is the window in hours, same convention as
+ * change1). Downstream these take precedence over Mobula's equivalents: fomo is the first
+ * party. Undefined when the row carries none of them, so a card shows nothing over a guess.
+ */
+function metricsFromFomoRow(row: FomoRow): TokenMetrics | undefined {
+  const metrics: TokenMetrics = {
+    holdersCount: num(row.holders),
+    buys1h: num(row.buyCount1),
+    sells1h: num(row.sellCount1),
+    trades1h: num(row.txnCount1),
+    volume1h: num(row.volume1),
+  }
+  return Object.values(metrics).some((value) => value !== undefined) ? metrics : undefined
+}
+
+/**
  * Adapt one row from a fomo list. Returns null when the row lacks the identity we need,
  * so a shape change downstream degrades to "fewer rows" rather than a crash.
  */
@@ -224,5 +247,6 @@ export function fromFomoRow(raw: unknown): Token | null {
       telegram: row?.token?.socialLinks?.telegram,
       website: row?.token?.socialLinks?.website,
     },
+    metrics: metricsFromFomoRow(row ?? {}),
   }
 }

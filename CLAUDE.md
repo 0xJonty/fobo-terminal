@@ -112,6 +112,14 @@ branch that suppressed the mount. No line at all means the content script never 
   flashed on every handoff — reverted after live use.
 - fomo REST wraps everything in {success, responseObject} — fomoCall unwraps; raw fetches
   (opencli eval probes) must read .responseObject themselves.
+- trending_tokens socket rows are THIN (verified live, 79-row snapshot: only marketCap /
+  volume24 / change24 / priceUSD / holders / images; liquidity, createdAt, change1/5m,
+  socials, launchpad all absent). Full standard rows for the same ids come from POST
+  /proxy/filterTokens (verified 12/12 liquidity, 11/12 createdAt) — src/lib/backfill.ts
+  fills trending cards from it, decoration-only. fomo list rows carry first-party metrics
+  (holders, buyCount1/sellCount1/txnCount1/volume1; numeric suffix = window in hours) parsed
+  by fromFomoRow and preferred over Mobula. Mobula pulse serves launchpad views only —
+  live overlap with trending was 1/79 — so it cannot enrich that column.
 - More chunk homes: ClanWindowSelector-* = the side panel (alerts feed + filters, the /feed
   social feed + its 8 filter groups, the alert-ding sound). Token id helper (chains chunk)
   is `${address}:${networkId}` — same as our tokenKey.
