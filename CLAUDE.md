@@ -153,6 +153,10 @@ branch that suppressed the mount. No line at all means the content script never 
   reset-on-prop-change and latest-ref idioms.
 - `__FOBO_BUILD__` comes from vite `define` (declared in src/vite-env.d.ts; vitest defines
   it 'test') — stamped as data-fobo-build on the host.
+- The shadow root is CLOSED, so `event.composedPath()` is truncated at the host for any
+  listener outside it (window/document): inside events look like "outside", and target is
+  retargeted to the host. Never gate on composedPath from window — use lib/clickAway.ts
+  for click-away, and resolve real focus via `shadowRoot.activeElement` for key guards.
 
 ## Chrome Web Store
 

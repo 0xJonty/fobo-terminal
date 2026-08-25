@@ -1,3 +1,4 @@
+import { useClickAway } from '~/lib/clickAway'
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, SlidersHorizontal } from 'lucide-react'
 import { ChainIcon } from '~/ui/ChainIcon'
@@ -90,16 +91,8 @@ export function ColumnControls({
   // Both sides are built with the same literal field order, so the string compare holds.
   const active = JSON.stringify(prefs) !== JSON.stringify(defaultPrefs(list))
 
-  // Click-away: composedPath works across the shadow boundary, plain target does not.
-  useEffect(() => {
-    if (!open) return
-    const onDown = (event: Event) => {
-      const root = rootRef.current
-      if (root && !event.composedPath().includes(root)) setOpen(false)
-    }
-    window.addEventListener('pointerdown', onDown)
-    return () => window.removeEventListener('pointerdown', onDown)
-  }, [open])
+  // Click-away — shadow-root aware (see lib/clickAway.ts).
+  useClickAway(rootRef, open, () => setOpen(false))
 
   // The terminal hides (not unmounts) on a handoff; do not come back with a stale open panel.
   useEffect(() => {

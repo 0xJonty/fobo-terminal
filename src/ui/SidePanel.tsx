@@ -13,6 +13,7 @@ import {
   type PanelView,
 } from '~/lib/settings'
 import type { AlertItem } from '~/lib/alerts'
+import { useClickAway } from '~/lib/clickAway'
 import type { FeedItem } from '~/lib/feed'
 import type { Token } from '~/types/token'
 import { HIDDEN_EVENT } from '~/lib/host'
@@ -83,16 +84,8 @@ export function SidePanel({
   const [open, setOpen] = useState(false)
   const selectRef = useRef<HTMLDivElement>(null)
 
-  // Click-away for the view menu; composedPath works across the shadow boundary.
-  useEffect(() => {
-    if (!open) return
-    const onDown = (event: Event) => {
-      const root = selectRef.current
-      if (root && !event.composedPath().includes(root)) setOpen(false)
-    }
-    window.addEventListener('pointerdown', onDown)
-    return () => window.removeEventListener('pointerdown', onDown)
-  }, [open])
+  // Click-away for the view menu — shadow-root aware (see lib/clickAway.ts).
+  useClickAway(selectRef, open, () => setOpen(false))
 
   useEffect(() => {
     const close = () => setOpen(false)

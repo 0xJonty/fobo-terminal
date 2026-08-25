@@ -1,3 +1,4 @@
+import { useClickAway } from '~/lib/clickAway'
 import { useEffect, useRef, useState } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { FEED_GROUPS } from '~/lib/feed'
@@ -43,15 +44,8 @@ export function PanelFilters({
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const onDown = (event: Event) => {
-      const root = rootRef.current
-      if (root && !event.composedPath().includes(root)) setOpen(false)
-    }
-    window.addEventListener('pointerdown', onDown)
-    return () => window.removeEventListener('pointerdown', onDown)
-  }, [open])
+  // Click-away — shadow-root aware (see lib/clickAway.ts).
+  useClickAway(rootRef, open, () => setOpen(false))
 
   useEffect(() => {
     const close = () => setOpen(false)

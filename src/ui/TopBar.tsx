@@ -11,6 +11,7 @@ import {
   WITHDRAW_ICON,
   type MenuIcon,
 } from '~/ui/headerMenuIcons'
+import { useClickAway } from '~/lib/clickAway'
 import { isAuthFailing, searchTokens, searchUsers, type FomoTrader } from '~/lib/fomoApi'
 import iconUrl from '~/assets/icon-48.png?inline'
 import { usd, usdDelta, usdExact } from '~/lib/format'
@@ -92,13 +93,17 @@ function MenuItem({
   )
 }
 
-/** True when the key event originated in something the user types into. */
-function isEditableTarget(event: KeyboardEvent): boolean {
-  return event.composedPath().some((node) => {
-    if (!(node instanceof HTMLElement)) return false
-    const tag = node.tagName
-    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable
-  })
+/**
+ * True when the key event originated in something the user types into. The terminal's own
+ * shadow root is CLOSED, so a window listener sees inside events retargeted to the host and
+ * composedPath truncated — resolve the real focused element off the shadow root instead.
+ */
+function isEditableTarget(event: KeyboardEvent, root: Node | null): boolean {
+  let el: Element | null = event.target instanceof Element ? event.target : null
+  if (root instanceof ShadowRoot && el === root.host) el = root.activeElement
+  if (!(el instanceof HTMLElement)) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
 export function TopBar({
@@ -140,7 +145,7 @@ export function TopBar({
       if (event.key !== '/' || event.isComposing) return
       if (event.metaKey || event.ctrlKey || event.altKey) return
       if (!isActive()) return
-      if (isEditableTarget(event)) return
+      if (isEditableTarget(event, inputRef.current?.getRootNode() ?? null)) return
       const input = inputRef.current
       if (!input) return
       event.preventDefault()
@@ -186,15 +191,8 @@ export function TopBar({
   const [menu, setMenu] = useState<'cash' | 'profile' | null>(null)
   const menusRef = useRef<HTMLUListElement>(null)
 
-  useEffect(() => {
-    if (!menu) return
-    const onDown = (event: Event) => {
-      const root = menusRef.current
-      if (root && !event.composedPath().includes(root)) setMenu(null)
-    }
-    window.addEventListener('pointerdown', onDown)
-    return () => window.removeEventListener('pointerdown', onDown)
-  }, [menu])
+  // Click-away — shadow-root aware (see lib/clickAway.ts).
+  useClickAway(menusRef, menu !== null, () => setMenu(null))
 
   useEffect(() => {
     const close = () => setMenu(null)
