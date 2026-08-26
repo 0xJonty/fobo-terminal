@@ -16,10 +16,10 @@
       .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
       .row + .row { margin-top: 12px; }
       .title { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
-      .title span { color: #516af6; }
       .sub { margin: 2px 0 0; font-size: 11px; color: #9899a3; }
       .divider { height: 1px; background: rgb(203 208 235 / 0.1); margin: 14px 0; }
-      .label { font-size: 12px; }
+      /* Every option header wears the title's face — one voice down the whole popup. */
+      .label { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
       .hint { margin: 2px 0 0; font-size: 10px; color: #9899a3; }
 
       /* Apple-style switch: pill track, round white knob, iOS green when on. */
@@ -86,7 +86,7 @@
     <main class="card">
       <div class="row">
         <div>
-          <p class="title">fobo<span>.</span> terminal</p>
+          <p class="title">fobo terminal</p>
           <p class="sub">Show the terminal on fomo.family</p>
         </div>
         <label class="switch">
@@ -99,18 +99,18 @@
 
       <div class="row">
         <div>
-          <p class="label">FOMO Panel</p>
+          <p class="label">fomo panel</p>
           <p class="hint">Alerts, watchlist and feed beside the columns</p>
         </div>
         <label class="switch">
-          <input id="alerts-enabled" type="checkbox" aria-label="Show the FOMO Panel" />
+          <input id="alerts-enabled" type="checkbox" aria-label="Show the fomo panel" />
           <span class="slider"></span>
         </label>
       </div>
 
       <div class="row">
         <p class="label">Side</p>
-        <div class="segment" role="group" aria-label="FOMO Panel side">
+        <div class="segment" role="group" aria-label="fomo panel side">
           <button id="side-left" type="button" aria-pressed="false">Left</button>
           <button id="side-right" type="button" aria-pressed="true">Right</button>
         </div>
@@ -126,8 +126,6 @@
           <span class="slider"></span>
         </label>
       </div>
-
-      <p class="hint">Resize the panel by dragging its inner edge.</p>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>
