@@ -2,7 +2,7 @@
   "name": "fobo-terminal",
   "version": "1.0.0",
   "private": true,
-  "description": "A live three-column token terminal for fomo.family: Bonding, Graduated and Trending side by side, plus alerts, watchlist and feed.",
+  "description": "Advanced memecoin trading terminal for fomo",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",

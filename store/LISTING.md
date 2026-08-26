@@ -30,7 +30,7 @@ image uploads; `npm run package` produces the zip (`release/fobo-terminal-<versi
 **Name** (from manifest): `fobo terminal`
 
 **Summary** (from manifest `description`, ≤132 chars):
-`A live three-column token terminal for fomo.family: Bonding, Graduated and Trending side by side, plus alerts, watchlist and feed.`
+`Advanced memecoin trading terminal for fomo`
 
 **Detailed description** (paste):
 
