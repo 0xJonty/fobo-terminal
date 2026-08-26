@@ -66,9 +66,14 @@ under your own account; if fomo changes its API, features may degrade until upda
 
 **Images** (this folder):
 - Store icon: `icon-128.png` (128×128, 96×96 artwork with 16 px transparent padding).
-- Screenshots: `screenshot-1-1280x800.png`, `screenshot-2-1280x800.png` (1280×800; 1–5 allowed).
-  Check them before upload — retake with `opencli browser <session> screenshot --width 1280 --height 800`
-  if the terminal was not fully loaded when captured.
+- Screenshots (1280×800, upload all five in this order):
+  1. `screenshot-1-1280x800.png` — full terminal, live capture.
+  2. `screenshot-2-1280x800.png` — the fomo bar: alerts, watchlist and feed side by side.
+  3. `screenshot-3-1280x800.png` — column filters popover, demo-video styling.
+  4. `screenshot-4-1280x800.png` — holdings strip, demo-video styling.
+  5. `screenshot-5-1280x800.png` — promo poster (wordmark + tagline + terminal).
+  2–5 are composed from the raw captures in `marketing/snapshots/` with the demo-video
+  look (Aeonik, brand background `#0b091f`, accent `#516af6`).
 - Small promo tile: `promo-small-440x280.png` (440×280 — effectively required; listings
   without one rank behind those with one).
 - Marquee: `promo-marquee-1400x560.png` (optional, only used if featured).
