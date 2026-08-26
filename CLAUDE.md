@@ -230,6 +230,39 @@ branch that suppressed the mount. No line at all means the content script never 
   use python prints.
 - Broad regexes over the ~430-chunk mirror can hit the 120s Bash timeout — keep patterns
   backtrack-safe (no nested `[^"']*` around alternations) or scan per-file in python.
+- Raw CDP through opencli's daemon beats the closed shadow root: POST localhost:19825/command,
+  header `X-OpenCLI: 1`, body {id, action:"cdp", cdpMethod, cdpParams, session:"uqem7t7t",
+  surface:"browser", timeout, deadlineAt}. Trusted coordinate clicks (Input.dispatchMouseEvent
+  move/press/release) open ColumnControls and the panelsel menu; `opencli keys` is trusted too
+  ("/" focuses terminal search from outside). The extension allowlists cdpMethod —
+  Page.bringToFront / setWebLifecycleState are refused, Emulation.setDeviceMetricsOverride works
+  (pins viewport; `screenshot --width` REVERTS it — re-pin before coordinate clicks; clear when done).
+- `keys Escape` DISMISSES the terminal unless focus is inside a popover — close popovers by
+  click-away on empty header space (e.g. (700,133)), never Esc.
+- Pixel-exact 2x capture: host `style.zoom="2"` + `screenshot --width 3840 --height 2160`
+  (verified: OCR coords exactly double). Blind driving without image viewing: RapidOCR +
+  pixel-diff in a scratchpad venv (PEP 668 blocks user pip; playwright pkg + the cached
+  ~/.cache/ms-playwright chromium_headless_shell renders local HTML headless).
+- The hidden-window visibility quirk is INTERMITTENT — same day flipped visible→hidden.
+  Probe data-fobo-active, never assume. A paused terminal is still fine for structural
+  captures (popovers, menus: no live data, static lists = clean diffs), but holdings bar
+  is absent so columns sit 35px (1x) higher than populated layout.
+- Measured capture geometry (2x px): columns x 47-947 / 1026-1926 / 2002-2902; panel content
+  x 2976-3804 (scrollbar strip + gutter beyond); holdings strip y 122-206; colctl popover
+  surface ends x≈1024 (its capture overlaps the next column — trim, don't trust edge scans
+  near it); panelsel menu box (2980,294)-(3232,582), option rows ~52px tall.
+
+## Marketing / demo assets
+
+- Raw 2x terminal captures (real data): marketing/snapshots/ (gitignored; README flags which
+  takes carry a crude token in the Graduated column). Final demo video: release/fobo-demo.mp4.
+- The demo video source of truth is the "fobo launch demo" artifact — a Claude Design canvas
+  whose Film artboard is one JS-timeline animation (play/scrub tweaks); the MP4 is rendered
+  from the same HTML frame-by-frame (playwright __setT(t) stepping, 60fps, ffmpeg via
+  imageio-ffmpeg). Pipeline scripts live only in the session scratchpad (film_build.py etc.).
+- Brand font is Aeonik — fomo serves /fonts/Aeonik-{Regular,Medium,Bold}.woff2 (embed as
+  data URIs). Chrome store screenshots must be exactly 1280x800 or 640x400 — 16:9 captures
+  need deliberate crops; finished listing images live in store/.
 
 ## Git
 
