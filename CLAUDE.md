@@ -214,8 +214,13 @@ branch that suppressed the mount. No line at all means the content script never 
   page context (challengeResponse with the privy:token, subscribe one topic), collect frames
   into a window var, read back after a sleep.
 - Image work: python3 PIL is installed; Windows fonts at /mnt/c/Windows/Fonts (arialbd.ttf
-  yes, segoeui.ttf no). Icons + promo tiles are generated from fobo-icon.png (repo root,
-  branding source of truth) with PIL — no ImageMagick on this machine.
+  yes, segoeui.ttf no). Generated with PIL — no ImageMagick on this machine. The extension
+  icons come from Fobo-Square-Rounded.png (repo root, 1024²); the promo tiles still come from
+  the older fobo-icon.png. Geometry, measured off the committed files: 16/32/48 are full-bleed
+  LANCZOS downscales, 128 is 96² of artwork centred on a transparent 128² canvas (the store's
+  16px-padding convention), and store/icon-128.png is a byte copy of src/assets/icon-128.png.
+- `git show HEAD:<some.png> > out.png` CORRUPTS binaries — the shell-output hook UTF-8-decodes
+  stdout, so 0x89 becomes EF BF BD. Read old blobs via python subprocess capture_output instead.
 
 - Output-compression hooks mangle multi-file grep results ("N matches in M files" interleaving)
   and piped opencli output sometimes emits a spurious "claude native binary not installed"
