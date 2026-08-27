@@ -1,7 +1,11 @@
 # Chrome Web Store listing — fobo terminal
 
-Everything the developer dashboard asks for, ready to paste. Files in this folder are the
-image uploads; `npm run package` produces the zip (`release/fobo-terminal-<version>.zip`).
+Everything the developer dashboard asks for, ready to paste. Every file in this folder is a
+store upload — nothing else belongs here; `npm run package` produces the zip
+(`release/fobo-terminal-<version>.zip`). Off-store artwork (the 1024² icon sources, the X/Twitter
+header) lives in `brand/`.
+
+Note: the five screenshots below are also the README's visuals. Renaming one breaks the README.
 
 ## Before the first upload (one-time)
 
@@ -13,9 +17,10 @@ image uploads; `npm run package` produces the zip (`release/fobo-terminal-<versi
 3. In the console's **Account** page: verify the contact email (it is shown publicly on the
    listing), and complete the trader / non-trader declaration (EU DSA) — as an individual
    publishing a free extension you will normally declare **non-trader**.
-4. Host `PRIVACY.md` at a public URL (a GitHub Gist, a GitHub Pages site, or any page you
-   control). The privacy-policy URL is mandatory for this extension because it handles the
-   user's authentication token.
+4. Host `PRIVACY.md` at a public URL. The repo is public, so the GitHub blob URL
+   <https://github.com/0xJonty/fobo-terminal/blob/main/PRIVACY.md> is sufficient; a Gist or
+   GitHub Pages site works equally well. The privacy-policy URL is mandatory for this extension
+   because it handles the user's authentication token.
 
 ## Package
 
@@ -78,8 +83,9 @@ under your own account; if fomo changes its API, features may degrade until upda
   without one rank behind those with one).
 - Marquee: `promo-marquee-1400x560.png` (optional, only used if featured).
 
-**Official URL / Homepage / Support URL**: optional. If the repo stays private, a public
-support email or a GitHub Issues page on a public repo is the usual choice.
+**Official URL / Homepage / Support URL**:
+<https://github.com/0xJonty/fobo-terminal> for both homepage and support; point Support at
+<https://github.com/0xJonty/fobo-terminal/issues> if the dashboard takes them separately.
 
 ## Privacy practices tab
 
@@ -109,7 +115,8 @@ support email or a GitHub Issues page on a public repo is the usual choice.
 - Certify all three statements: not sold to third parties; not used for purposes unrelated
   to the single purpose; not used to determine creditworthiness or for lending.
 
-**Privacy policy URL**: the public URL where `PRIVACY.md` is hosted.
+**Privacy policy URL**: <https://github.com/0xJonty/fobo-terminal/blob/main/PRIVACY.md>
+(or wherever you host `PRIVACY.md`).
 
 ## Distribution tab
 

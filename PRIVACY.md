@@ -68,5 +68,6 @@ this document's "Last updated" date.
 
 ## Contact
 
-Questions about this policy: use the support contact shown on the extension's Chrome Web
-Store listing.
+Questions about this policy: open an issue at
+<https://github.com/0xJonty/fobo-terminal/issues>, or use the support contact shown on the
+extension's Chrome Web Store listing.
