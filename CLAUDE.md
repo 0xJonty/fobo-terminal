@@ -62,6 +62,14 @@ after each change; content scripts also need the host page reloaded.
 If the overlay never appears, read the page console for `[fobo] <decision> — <path>`; it names the
 branch that suppressed the mount. No line at all means the content script never ran.
 
+A `mount` decision is not proof the terminal is on screen — it only says sync() chose to show it.
+`render()` can still decline: it owns a single `#fobo-terminal-root`, and a leftover host from an
+earlier instance used to make it return silently, with the launcher already removed and no error
+logged (fixed 2026-08-27 — it now replaces the stale element, and sync() falls back to the launcher
+plus a `[fobo] mount produced no host` warning if a mount ever lands empty again). When the decision
+line says `mount` and there is nothing there, check `document.getElementById('fobo-terminal-root')`
+and its `data-fobo-build` against the stamp in the emitted bundle before suspecting the decision.
+
 ## Build quirks (@crxjs/vite-plugin 2.7.1)
 
 - No dev server. `npm run dev` aliases `vite build --watch`. CRXJS's HMR client throws on socket
