@@ -149,16 +149,27 @@ export function App({
     soundRef.current = alertsSettings?.sound !== false
   }, [alertsSettings])
 
-  // AudioContext creation is gesture-gated by the browser; a pointerdown inside the visible
-  // terminal unlocks it — but only for users who will actually hear a ding.
+  // AudioContext creation is gesture-gated by the browser, so a pointerdown inside the visible
+  // terminal is the only thing that can unlock it.
+  //
+  // This used to skip the unlock while the sound preference was off, to avoid building a context
+  // for someone who would never hear it. That made turning the sound back ON look broken: the
+  // popup toggle is a gesture in the POPUP document, not in the page, so nothing unlocked audio
+  // and dingForAlert kept bailing on its `context.state !== 'running'` gate — silence until the
+  // user happened to click inside the terminal again. Turning sound off stayed instant (soundRef
+  // guards the call site), so the control only appeared to work one way.
+  //
+  // Unlock on any in-terminal pointerdown while the panel is on, and let soundRef decide whether
+  // a ding actually plays. The cost of being wrong is one idle AudioContext and one small
+  // same-origin mp3; the cost of the old gate was a preference that did not take effect.
   useEffect(() => {
-    if (!panelEnabled || alertsSettings?.sound === false) return
+    if (!panelEnabled) return
     const unlock = () => {
       if (isActive()) unlockAudio()
     }
     window.addEventListener('pointerdown', unlock, { capture: true })
     return () => window.removeEventListener('pointerdown', unlock, { capture: true })
-  }, [panelEnabled, alertsSettings?.sound])
+  }, [panelEnabled])
 
   // The chosen view is tab-session state — it survives refreshes of this tab.
   const [panelView, setPanelView] = useState<PanelView>(readPanelView)
