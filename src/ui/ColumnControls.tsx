@@ -228,7 +228,6 @@ export function ColumnControls({
                 />
               </div>
             ))}
-            <div className="colctl-hint">Rows missing a bounded metric are hidden — a blank beats a guess.</div>
           </div>
 
           <div className="colctl-foot">
