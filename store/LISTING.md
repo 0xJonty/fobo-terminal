@@ -83,9 +83,8 @@ under your own account; if fomo changes its API, features may degrade until upda
   without one rank behind those with one).
 - Marquee: `promo-marquee-1400x560.png` (optional, only used if featured).
 
-**Official URL / Homepage / Support URL**:
-<https://github.com/0xJonty/fobo-terminal> for both homepage and support; point Support at
-<https://github.com/0xJonty/fobo-terminal/issues> if the dashboard takes them separately.
+**Official URL / Homepage**: <https://foboterminal.com/>
+**Support URL**: <https://github.com/0xJonty/fobo-terminal/issues>
 
 ## Privacy practices tab
 

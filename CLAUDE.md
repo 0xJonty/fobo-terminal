@@ -6,7 +6,8 @@ Project instructions for Claude Code working in this repository.
 
 `fobo-terminal` is a Chrome extension (Manifest V3) that replaces fomo.family's home screen with an
 Axiom-Pulse-style three-column token terminal. Source is in `src/`: React 19 + TypeScript, built by
-Vite with `@crxjs/vite-plugin`. The repo is public and MIT-licensed.
+Vite with `@crxjs/vite-plugin`. The repo is public and MIT-licensed; the product site is
+https://foboterminal.com/ (the homepage in package.json, README and store/LISTING.md).
 
 ## Layout
 
@@ -20,6 +21,9 @@ Vite with `@crxjs/vite-plugin`. The repo is public and MIT-licensed.
 
 `README.md` is the public front door and embeds `store/screenshot-*.png` — those five files are
 load-bearing for it, not just store uploads. `PRIVACY.md` and `LICENSE` stay at the repo root.
+The README deliberately carries no Status, Repo layout, WSL-build or Web Store section: that
+material lives here and in `store/LISTING.md`, so don't reintroduce it there. `docs/AUDIT.md` is
+consequently unlinked from the README — reach it from this file.
 
 ## Ground rules
 

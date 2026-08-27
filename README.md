@@ -7,6 +7,8 @@
 **The home screen [fomo.family](https://fomo.family/) doesn't have.**
 Bonding, Graduated and Trending side by side — live, dense, and in fomo's own design language.
 
+**[foboterminal.com](https://foboterminal.com/)**
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-516af6.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/chrome-Manifest%20V3-516af6.svg)](manifest.config.ts)
 [![Read-only](https://img.shields.io/badge/wallet-read--only-516af6.svg)](#scope-limits)
@@ -110,19 +112,6 @@ and status every five, matching fomo's intervals.
 
 Not built yet: fomo's Tokens and Leaderboard side-panel tabs.
 
-## Status
-
-Working and in daily use. Every endpoint, socket frame and formula is verified against the live
-API and fomo's own bundle; the terminal is exercised end-to-end in Chrome after each change.
-
-A full source audit ([`docs/AUDIT.md`](docs/AUDIT.md), 2026-08-24) covered security, performance,
-functionality and maintainability across every file in `src/`. All 33 findings are closed: 32
-fixed in code, and one — the masked address bar — kept deliberately and documented under
-[Scope limits](#scope-limits). The resolution table at the bottom of that file names the fix for
-each.
-
-Not yet on the Chrome Web Store; install from source below.
-
 ## Install
 
 ```bash
@@ -139,6 +128,8 @@ Then:
 3. **Load unpacked** → select the build output directory
 4. Open <https://fomo.family/> while signed in
 
+More at [foboterminal.com](https://foboterminal.com/).
+
 The toolbar icon toggles fobo on and off, and `Esc` dismisses the overlay (a small `fobo` button
 brings it back). After a rebuild, hit **Reload** on the extension card — the host page needs
 reloading too.
@@ -152,42 +143,9 @@ npm run check     # typecheck + lint + tests only
 npm run package   # checks + build, then release/fobo-terminal-<version>.zip
 ```
 
-`npm run build` refuses to write into an output directory that is not named `dist`, is not
-empty, and holds no `manifest.json` — a guard against a mistyped `FOBO_OUT_DIR` wiping something
-else.
-
-### Building from WSL for Chrome on Windows
-
-The source can live in WSL while Chrome runs on Windows. Set the output directory to a Windows
-path in `.env.local` (gitignored):
-
-```
-FOBO_OUT_DIR=/mnt/c/Users/<you>/fobo-terminal/dist
-```
-
-`npm run watch` then rewrites that directory on every save, so Chrome always sees current code —
-load `C:\Users\<you>\fobo-terminal\dist` once and just hit Reload after a change.
-
-Do **not** point Chrome at a `\\wsl.localhost\...` UNC path; use a real Windows path.
-
-**There is no HMR dev server.** `npm run dev` is an alias for `npm run watch`, and the Vite
-dev-server path has been removed, for two independent reasons:
-
-- CRXJS hard-codes `http://localhost:<port>` into the dev loader, and Windows resolves
-  `localhost` to IPv6 `::1` first. Across a mirrored-networking WSL boundary only the IPv4
-  loopback is shared — `127.0.0.1:<port>` answers, `[::1]:<port>` times out — so the extension
-  can never reach it.
-- CRXJS 2.7.1's HMR client is broken regardless. It substitutes its `__LIVE_RELOAD__`
-  placeholder with a string-pattern `String.prototype.replace`, which rewrites only the first of
-  two occurrences; the survivor throws `ReferenceError: __LIVE_RELOAD__ is not defined` as soon
-  as the socket drops. That kills the service worker and leaves the page holding a dead port
-  (`Attempting to use a disconnected port object`, `Extension context invalidated`).
-
-`npm run watch` produces a self-contained build with none of that machinery.
-
-If a reload ever lands on `Uncaught SyntaxError: Unexpected end of input`, Chrome read a chunk
-while the watcher was still writing it — rebuild finishes in under a second, so just reload
-again.
+`npm run build` writes to `./dist` unless `FOBO_OUT_DIR` overrides it, and refuses to write
+into a directory that is not named `dist`, is not empty, and holds no `manifest.json` — a guard
+against a mistyped output path wiping something else.
 
 ## How it works
 
@@ -235,32 +193,6 @@ behind Cloudflare bot management that rejects non-browser clients; a service-wor
   mask; fomo's router never sees it). Copying that URL gives a link that only works with the
   extension installed — anyone else lands on fomo's 404 view. Copy the token's own link from a
   card (right-click → copy link) when sharing.
-
-## Repo layout
-
-```
-src/        extension source — content script, service worker, popup, lib, ui, types, icons
-scripts/    package.mjs, the dependency-free zip writer behind `npm run package`
-store/      Chrome Web Store uploads and LISTING.md; the screenshots above live here
-brand/      1024² source artwork the extension icons and promo tiles were rendered from
-docs/       AUDIT.md — the full source audit and its resolution table
-```
-
-## Publishing to the Chrome Web Store
-
-Everything the store asks for lives in [`store/LISTING.md`](store/LISTING.md): account setup
-(one-time fee, 2-Step Verification, trader declaration), the listing copy, the permission
-justifications and data-usage answers for the Privacy tab, and the test instructions for
-reviewers. The image uploads are in `store/` — the 128 px icon, five 1280×800 screenshots, and
-the small and marquee promo tiles. [`PRIVACY.md`](PRIVACY.md) is the privacy policy to host at a
-public URL.
-
-```bash
-npm run package   # checks + build into ./dist, then release/fobo-terminal-<version>.zip
-```
-
-The zip has `manifest.json` at its root and no sourcemaps. Bump `version` in `package.json`
-before each upload — the store refuses a version it has already seen.
 
 ## License
 
