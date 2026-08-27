@@ -40,30 +40,40 @@ Note: the five screenshots below are also the README's visuals. Renaming one bre
 **Detailed description** (paste):
 
 ```
-fobo terminal replaces the fomo.family landing page with a dense, live home screen: the
-Bonding, Graduated and Trending token lists side by side, streamed from fomo's own websocket
-in fomo's own order, with market cap, volume, liquidity, age, price change, trade pressure
-and holder-concentration metrics on every card.
+fobo terminal replaces the landing page on fomo.family with a dense, live home screen: the
+Bonding, Graduated and Trending token lists side by side, streamed from the site's own
+websocket in the order it publishes them, with market cap, volume, liquidity, age, price
+change, trade pressure and holder-concentration metrics on every card.
 
-Beside the columns, the FOMO Panel switches between your Alerts (the trading activity of the
-traders you follow), your Watchlist, and fomo's social Feed — with fomo's own filters. The top
-bar shows your cash and portfolio value with fomo's arithmetic, the holdings strip shows your
-open positions, and the bottom bar mirrors fomo's ticker and status dot.
+Beside the columns, a side panel switches between your Alerts (the trading activity of the
+traders you follow), your Watchlist, and the social Feed, each carrying the same filters the
+site itself offers. The top bar shows your cash and portfolio value using its own arithmetic,
+the holdings strip shows your open positions, and the bottom bar mirrors the ticker and
+status dot.
 
-Everything is read-only: clicking a card, alert or trader opens it on fomo.family. Deposit,
-withdraw and account actions hand off to fomo's own dialogs. There is no wallet access, no
+Everything is read-only. Clicking a card, alert or trader opens it on the site. Deposit,
+withdraw and account actions hand off to its own dialogs. There is no wallet access, no
 signing and no trade submission.
 
 How it works
 • Runs only on fomo.family pages, using the session you are already logged into.
-• Reads fomo's own API and websocket — the same data fomo's pages show, nothing invented.
-• Holder metrics come from Mobula's public Pulse endpoint; everything else is fomo's.
-• Preferences (panel side/width, sound, column filters) are saved to your Chrome profile.
-• Toolbar icon toggles it; Esc dismisses it; the fobo button brings it back.
+• Reads the site's own API and websocket — the same data its pages show, nothing invented.
+• Holder metrics come from Mobula's public Pulse endpoint; every other number comes from
+  the site itself.
+• Preferences (panel side and width, alert sound, column filters) are saved to your Chrome
+  profile.
+• The toolbar icon toggles the terminal, Esc dismisses it, and a small button restores it.
 
-Not affiliated with, endorsed by or maintained by fomo.family. Uses fomo's public web API
-under your own account; if fomo changes its API, features may degrade until updated.
+Not affiliated with, endorsed by or maintained by fomo.family. Uses its public web API under
+your own account; if that API changes, features may degrade until updated.
 ```
+
+> **Keep the name's density low.** A 2026-08-27 submission was auto-rejected under "excessive
+> keywords in the item's description" (violation reference *Yellow Argon*) for 17 occurrences
+> of `fomo` / `fomo's` / `fomo.family` in roughly 250 words. The copy above names the site
+> three times — once to say what the extension attaches to, once in the host-permission
+> bullet, once in the disclaimer — and uses "the site" / "its" everywhere else. If you edit
+> this description, re-count before submitting.
 
 **Category**: Productivity (alternatively Developer Tools / Finance if offered — pick one).
 
@@ -89,28 +99,28 @@ under your own account; if fomo changes its API, features may degrade until upda
 ## Privacy practices tab
 
 **Single purpose description**:
-`Adds a live token-list home screen (Bonding / Graduated / Trending, alerts, watchlist, feed) to fomo.family pages, using the user's existing fomo session.`
+`Adds a live token-list home screen (Bonding / Graduated / Trending, alerts, watchlist, feed) to fomo.family pages, using the session the user is already logged into.`
 
 **Permission justifications**:
 - `storage`: "Saves the user's preferences: terminal on/off, panel side and width, alert
   sound, and per-column filter/sort settings."
-- Host permission `https://fomo.family/*`: "The extension only works on fomo.family. The
-  content script renders the terminal on fomo.family pages, and the background worker uses
-  this host permission to notify open fomo.family tabs when the toolbar toggle changes. No
-  other sites are accessed."
+- Host permission `https://fomo.family/*`: "This is the only site the extension works on.
+  The content script renders the terminal on its pages, and the background worker uses this
+  host permission to notify those open tabs when the toolbar toggle changes. No other site
+  is accessed."
 
 **Remote code**: No — all code ships in the package; nothing is fetched and executed.
 
 **Data usage** (check these, describe as below):
 - ☑ **Authentication information** — "Reads the fomo.family session token from the page's
-  local storage and sends it only to fomo.family's own API to fetch the user's data. Not
+  local storage and sends it only to that site's own API to fetch the user's data. Not
   stored, not logged, not sent elsewhere."
-- ☑ **Personally identifiable information** — "Displays the user's own fomo profile (handle,
-  display name, avatar) fetched from fomo's API. Not stored or transmitted elsewhere."
-- ☑ **Financial and payment information** — "Displays the user's own fomo balances and open
-  positions fetched from fomo's API. Not stored or transmitted elsewhere."
+- ☑ **Personally identifiable information** — "Displays the user's own profile (handle,
+  display name, avatar) fetched from the same API. Not stored or transmitted elsewhere."
+- ☑ **Financial and payment information** — "Displays the user's own balances and open
+  positions fetched from the same API. Not stored or transmitted elsewhere."
 - ☐ Health, ☐ Location, ☐ Web history, ☐ User activity, ☐ Website content — leave unchecked
-  (public token data is read from fomo's API, not scraped from pages).
+  (public token data is read from that API, not scraped from pages).
 - Certify all three statements: not sold to third parties; not used for purposes unrelated
   to the single purpose; not used to determine creditworthiness or for lending.
 
@@ -122,17 +132,22 @@ under your own account; if fomo changes its API, features may degrade until upda
 - Visibility: Public (or Unlisted for a soft launch — installable by link, not searchable).
 - Price: free. Regions: all.
 
+**Changing visibility re-triggers review.** Going from Trusted Testers (or Unlisted) to
+Public is a new submission, not a settings toggle — the item is re-reviewed against the full
+public-listing bar, which is stricter than the one a tester-only build passed. Budget for a
+fresh review cycle, and re-read the metadata below before flipping it.
+
 ## Test instructions tab
 
-Reviewers need a fomo.family login to see anything. Provide either a test account (email +
-password / login method) or this note:
+Reviewers need a login on the host site to see anything. Provide either a test account
+(email + password / login method) or this note:
 
 ```
-The extension only activates on https://fomo.family/ for a logged-in user. Without a
-fomo.family account the page shows fomo's marketing site and the extension stays inactive
-by design. To review: log in to fomo.family, open https://fomo.family/ — the terminal
-mounts over the landing page. Esc dismisses it; the "fobo" button (bottom right) restores it; the toolbar
-popup toggles it off entirely.
+The extension only activates on https://fomo.family/ for a logged-in user. Without an
+account there, the page shows the site's marketing content and the extension stays
+inactive by design. To review: sign in, then open https://fomo.family/ — the terminal
+mounts over the landing page. Esc dismisses it, the "fobo" button (bottom right) restores
+it, and the toolbar popup turns it off entirely.
 ```
 
 ## After submission
@@ -141,3 +156,14 @@ popup toggles it off entirely.
   the policy section — fix, bump the version, re-upload.
 - Keep `release/*.zip` (gitignored) and note the SHA-256 printed by `npm run package` for
   each version you upload.
+
+## Rejection log
+
+| Date | Reference | Reason | Fix |
+|---|---|---|---|
+| 2026-08-27 | Yellow Argon | "Having excessive keywords in the item's description" — 17 occurrences of `fomo` / `fomo's` / `fomo.family` in a ~250-word description, flagged on the submission that would have flipped the item from Trusted Testers to Public. | Rewrote every metadata field to name the site only where it is load-bearing and use "the site" / "its" elsewhere. Count across all fields went 37 → 9; the description itself went 17 → 3. |
+
+Google's policy here covers *all* metadata — description, developer name, title, icon,
+screenshots and promotional images — not just the description field, so keep the density
+sane everywhere. Nothing about the code changed for this rejection, so a resubmission does
+not need a version bump unless the package itself changed.

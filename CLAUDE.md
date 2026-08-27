@@ -180,6 +180,11 @@ branch that suppressed the mount. No line at all means the content script never 
 - `npm run package` → release/fobo-terminal-<version>.zip (dep-free zip writer in
   scripts/package.mjs — no `zip` CLI on this machine; maps excluded, manifest at root).
   Bump package.json version first — the store refuses reused versions.
+- Store metadata is keyword-policed: a 2026-08-27 submission was auto-rejected (ref "Yellow
+  Argon") for 17 uses of fomo/fomo's/fomo.family in a ~250-word description. Name the site
+  only where it carries weight, say "the site"/"its" elsewhere, and re-count before
+  submitting. Flipping visibility (Trusted Testers -> Public) is a NEW review, not a toggle.
+  Rejection log lives at the end of store/LISTING.md.
 - Listing copy, permission justifications, data-usage answers, reviewer instructions:
   store/LISTING.md. Privacy policy: PRIVACY.md (hosted publicly; the repo being public means
   the raw GitHub URL works). Images in store/ — the five 1280x800 screenshots double as the
