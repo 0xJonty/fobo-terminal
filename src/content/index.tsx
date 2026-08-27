@@ -533,7 +533,13 @@ function render(): void {
     if (wasHidden) window.dispatchEvent(new Event(SHOWN_EVENT))
     return
   }
-  if (document.getElementById(HOST_ID)) return
+  // A host in the DOM that this instance does not own — `host` is null, checked just above —
+  // is a leftover from an earlier one: an orphaned script from an extension reload, or a second
+  // injection into the same document. Returning here left the terminal permanently invisible.
+  // decide() kept answering 'mount', so sync() had already removed the launcher, and neither the
+  // toolbar toggle nor a home click could recover — every route back runs through this function,
+  // and every one of them hit this line. Take the id over instead.
+  document.getElementById(HOST_ID)?.remove()
 
   host = document.createElement('div')
   host.id = HOST_ID
@@ -636,8 +642,17 @@ async function sync(): Promise<void> {
   }
 
   if (decision === 'mount') {
-    removeLauncher()
     render()
+    // Never leave the page with no way back. Removing the launcher on the strength of the
+    // decision alone is what made a failed mount unrecoverable: the terminal was not on screen,
+    // the pill was gone, and every affordance that could have restored either one routed back
+    // through the render() call that had just declined to do anything.
+    if (!host?.isConnected) {
+      console.warn(`[fobo] mount produced no host — showing the launcher instead (${window.location.pathname})`)
+      showLauncher()
+      return
+    }
+    removeLauncher()
     // The intent is spent only once the route has SETTLED off `/`. fomo's home redirect hops
     // through transit paths (a bare `/token`, observed live) and the terminal can mount over
     // one mid-flight; clearing on that first mount consumed the intent before the real
