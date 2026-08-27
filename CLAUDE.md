@@ -6,7 +6,20 @@ Project instructions for Claude Code working in this repository.
 
 `fobo-terminal` is a Chrome extension (Manifest V3) that replaces fomo.family's home screen with an
 Axiom-Pulse-style three-column token terminal. Source is in `src/`: React 19 + TypeScript, built by
-Vite with `@crxjs/vite-plugin`.
+Vite with `@crxjs/vite-plugin`. The repo is public and MIT-licensed.
+
+## Layout
+
+    src/        extension source (content, background, popup, lib, ui, types, assets)
+    scripts/    package.mjs — the dep-free zip writer behind `npm run package`
+    store/      Chrome Web Store uploads + LISTING.md (everything the dashboard asks for)
+    brand/      1024² source artwork the icons and promo tiles were rendered from
+    docs/       AUDIT.md — the 2026-08-24 source audit, every finding resolved
+    marketing/  raw 2x captures (gitignored, local only)
+    release/    zips + fobo-demo.mp4 (gitignored, local only)
+
+`README.md` is the public front door and embeds `store/screenshot-*.png` — those five files are
+load-bearing for it, not just store uploads. `PRIVACY.md` and `LICENSE` stay at the repo root.
 
 ## Ground rules
 
@@ -164,7 +177,9 @@ branch that suppressed the mount. No line at all means the content script never 
   scripts/package.mjs — no `zip` CLI on this machine; maps excluded, manifest at root).
   Bump package.json version first — the store refuses reused versions.
 - Listing copy, permission justifications, data-usage answers, reviewer instructions:
-  store/LISTING.md. Privacy policy: PRIVACY.md (must be hosted publicly). Images in store/.
+  store/LISTING.md. Privacy policy: PRIVACY.md (hosted publicly; the repo being public means
+  the raw GitHub URL works). Images in store/ — the five 1280x800 screenshots double as the
+  README's visuals, so renaming one breaks the README too.
 
 ## Session tooling quirks (this machine)
 
@@ -215,8 +230,8 @@ branch that suppressed the mount. No line at all means the content script never 
   into a window var, read back after a sleep.
 - Image work: python3 PIL is installed; Windows fonts at /mnt/c/Windows/Fonts (arialbd.ttf
   yes, segoeui.ttf no). Generated with PIL — no ImageMagick on this machine. The extension
-  icons come from Fobo-Square-Rounded.png (repo root, 1024²); the promo tiles still come from
-  the older fobo-icon.png. Geometry, measured off the committed files: 16/32/48 are full-bleed
+  icons come from brand/fobo-square-rounded.png (1024²); the promo tiles still come from
+  the older brand/fobo-icon.png. Geometry, measured off the committed files: 16/32/48 are full-bleed
   LANCZOS downscales, 128 is 96² of artwork centred on a transparent 128² canvas (the store's
   16px-padding convention), and store/icon-128.png is a byte copy of src/assets/icon-128.png.
 - `git show HEAD:<some.png> > out.png` CORRUPTS binaries — the shell-output hook UTF-8-decodes

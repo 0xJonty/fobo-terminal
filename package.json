@@ -3,6 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "description": "Advanced memecoin trading terminal for fomo",
+  "license": "MIT",
+  "author": "Jonty Atkinson",
+  "homepage": "https://github.com/0xJonty/fobo-terminal#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xJonty/fobo-terminal.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0xJonty/fobo-terminal/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",

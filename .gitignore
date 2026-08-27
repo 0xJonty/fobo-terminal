@@ -58,4 +58,9 @@ Thumbs.db
 .cache/
 .eslintcache
 .turbo/
+
+# Local-only asset drops (raw 2x captures, demo video source material)
 marketing/
+
+# Agent session scratch — never publish
+.claude/
