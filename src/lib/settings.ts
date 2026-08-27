@@ -47,7 +47,7 @@ export interface AlertsSettings {
   alertsFilters: AlertsFilterSettings
 }
 
-export const ALERTS_DEFAULT: AlertsSettings = {
+const ALERTS_DEFAULT: AlertsSettings = {
   enabled: true,
   side: 'right',
   width: 340,

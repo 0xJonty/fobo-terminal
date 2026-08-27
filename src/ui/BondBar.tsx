@@ -5,7 +5,7 @@
  * `<33` red, `<66` warning, else green. We reuse their thresholds so the two agree.
  */
 
-export function bondColor(percent: number): string {
+function bondColor(percent: number): string {
   if (percent < 33) return 'var(--fobo-red)'
   if (percent < 66) return 'var(--fobo-warning)'
   return 'var(--fobo-green)'

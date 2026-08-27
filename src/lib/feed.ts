@@ -19,7 +19,7 @@ import { chainSlug } from '~/types/token'
 const PAGE_LIMIT = 50
 
 /** Bound on the merged list, so a long-lived tab cannot grow it without limit. */
-export const MAX_FEED = 400
+const MAX_FEED = 400
 
 /**
  * fomo's own filter groups for the Feed tab, lifted verbatim from its bundle (ids, member

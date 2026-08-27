@@ -509,7 +509,7 @@ export function watchlist(): Promise<WatchlistEntry[] | null> {
 }
 
 /** Drop the cached ids — after an un-star, the next read must hit the server. */
-export function invalidateWatchlist(): void {
+function invalidateWatchlist(): void {
   watchlistCache = null
 }
 

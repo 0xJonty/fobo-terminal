@@ -16,7 +16,7 @@ import { withTimeout } from '~/lib/async'
 import { LIST_KEYS, type ListKey } from '~/lib/protocol'
 import type { Token } from '~/types/token'
 
-export const COLUMNS_KEY = 'fobo:columns'
+const COLUMNS_KEY = 'fobo:columns'
 
 /**
  * Bumped when a change in meaning (not just shape) needs a migration on read — see

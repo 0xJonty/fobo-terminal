@@ -123,7 +123,7 @@ export const MAJORS = [
 const MAJOR_SET = new Set(MAJORS)
 
 /** fomo's ticker shows at most this many watched tokens. */
-export const WATCHLIST_MAX = 15
+const WATCHLIST_MAX = 15
 const TICKER_POLL_MS = 60_000
 const STATUS_POLL_MS = 300_000
 

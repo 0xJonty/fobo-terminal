@@ -230,8 +230,10 @@ branch that suppressed the mount. No line at all means the content script never 
   into a window var, read back after a sleep.
 - Image work: python3 PIL is installed; Windows fonts at /mnt/c/Windows/Fonts (arialbd.ttf
   yes, segoeui.ttf no). Generated with PIL — no ImageMagick on this machine. The extension
-  icons come from brand/fobo-square-rounded.png (1024²); the promo tiles still come from
-  the older brand/fobo-icon.png. Geometry, measured off the committed files: 16/32/48 are full-bleed
+  icons AND the promo tiles both come from brand/fobo-square-rounded.png (1024²) — verified by
+  template match, and by the underline bar under the wordmark, which only that master has. The
+  older circular brand/fobo-icon.png had no consumer left and was deleted.
+  Geometry, measured off the committed files: 16/32/48 are full-bleed
   LANCZOS downscales, 128 is 96² of artwork centred on a transparent 128² canvas (the store's
   16px-padding convention), and store/icon-128.png is a byte copy of src/assets/icon-128.png.
 - `git show HEAD:<some.png> > out.png` CORRUPTS binaries — the shell-output hook UTF-8-decodes
