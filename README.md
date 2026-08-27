@@ -114,6 +114,16 @@ Not built yet: fomo's Tokens and Leaderboard side-panel tabs.
 
 ## Install
 
+Two routes. Either way the toolbar icon toggles fobo on and off, and `Esc` dismisses the overlay
+(a small `fobo` button brings it back).
+
+### Quick install
+
+Go to **[foboterminal.com](https://foboterminal.com/)** — it takes you to the Chrome Web Store
+listing. Add it to Chrome, then open <https://fomo.family/> while signed in.
+
+### Install from source
+
 ```bash
 git clone https://github.com/0xJonty/fobo-terminal.git
 cd fobo-terminal
@@ -128,11 +138,7 @@ Then:
 3. **Load unpacked** → select the build output directory
 4. Open <https://fomo.family/> while signed in
 
-More at [foboterminal.com](https://foboterminal.com/).
-
-The toolbar icon toggles fobo on and off, and `Esc` dismisses the overlay (a small `fobo` button
-brings it back). After a rebuild, hit **Reload** on the extension card — the host page needs
-reloading too.
+After a rebuild, hit **Reload** on the extension card — the host page needs reloading too.
 
 ## Build
 
