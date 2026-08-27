@@ -6,7 +6,8 @@ Project instructions for Claude Code working in this repository.
 
 `fobo-terminal` is a Chrome extension (Manifest V3) that replaces fomo.family's home screen with an
 Axiom-Pulse-style three-column token terminal. Source is in `src/`: React 19 + TypeScript, built by
-Vite with `@crxjs/vite-plugin`. The repo is public and MIT-licensed; the product site is
+Vite with `@crxjs/vite-plugin`. MIT-licensed and prepared for a public launch, but the
+GitHub repo is still private — check before assuming anything here is world-readable. Product site:
 https://foboterminal.com/ (the homepage in package.json, README and store/LISTING.md).
 
 ## Layout
@@ -293,8 +294,26 @@ branch that suppressed the mount. No line at all means the content script never 
 
 ## Git
 
+- Repo is private on GitHub (verify with `gh repo view --json visibility` rather than assuming).
 - Default branch is `main`.
-- Repo is private.
+
+### Branching model
+
+    main            release branch. What goes public and what `npm run package` ships to the
+                    store. Only ever receives merges from `dev` — never commit to it directly.
+    dev             integration branch. Features land here and are tested together.
+    feature-<name>  one per feature, branched from `dev` and merged back into `dev`.
+
+Work happens on a `feature-*` branch. When it is done and `npm run check` is green, merge it
+into `dev` and exercise the built extension in Chrome from there. `dev` reaches `main` only
+when it is release-worthy — a store upload is cut from `main`, with the `package.json` version
+bumped in the same merge.
+
+Branch off the right base: a feature starts from `dev`, not from `main`, or it drags whatever
+`main` is missing back in. If you are asked to start a feature and are sitting on `main`,
+switch to `dev` and branch from there.
+
 - **Commit and push every change.** Do not leave work uncommitted at the end of a task — stage,
   commit with a descriptive message, and `git push`. This overrides any earlier "commit only when
-  asked" instruction.
+  asked" instruction. Push to the branch you are on; do not fast-path a feature onto `main` to
+  satisfy this rule.
