@@ -213,8 +213,8 @@ branch that suppressed the mount. No line at all means the content script never 
   <script> carrying the PAGE's own nonce (fomo's CSP has script-src nonce, no
   unsafe-eval; CDP top-level eval is CSP-exempt, nested eval is not). Collides with a
   live extension instance (same host id) — only useful while the extension is off/stale.
-- A 432-chunk bundle mirror may persist at
-  /tmp/claude-1000/-home-jonty-build-fobo-terminal/804ada0e-*/scratchpad/chunks.
+- A 432-chunk bundle mirror may persist under a previous session's scratchpad
+  (`.../scratchpad/chunks`); re-fetch it if that session is gone.
 - Emitted bundles write string literals as BACKTICK template literals (esbuild), so grepping
   dist for '"/token"' or single-quoted strings finds nothing — match the bare substring or
   backticks when verifying a build contains a change.
@@ -251,9 +251,10 @@ branch that suppressed the mount. No line at all means the content script never 
   use python prints.
 - Broad regexes over the ~430-chunk mirror can hit the 120s Bash timeout — keep patterns
   backtrack-safe (no nested `[^"']*` around alternations) or scan per-file in python.
-- Raw CDP through opencli's daemon beats the closed shadow root: POST localhost:19825/command,
-  header `X-OpenCLI: 1`, body {id, action:"cdp", cdpMethod, cdpParams, session:"uqem7t7t",
-  surface:"browser", timeout, deadlineAt}. Trusted coordinate clicks (Input.dispatchMouseEvent
+- Raw CDP through opencli's daemon beats the closed shadow root: POST <daemon-host:port>/command,
+  header `X-OpenCLI: 1`, body {id, action:"cdp", cdpMethod, cdpParams, session:<session-id>,
+  surface:"browser", timeout, deadlineAt} — take the host, port and session id from
+  `opencli` itself, never hardcode them here. Trusted coordinate clicks (Input.dispatchMouseEvent
   move/press/release) open ColumnControls and the panelsel menu; `opencli keys` is trusted too
   ("/" focuses terminal search from outside). The extension allowlists cdpMethod —
   Page.bringToFront / setWebLifecycleState are refused, Emulation.setDeviceMetricsOverride works
