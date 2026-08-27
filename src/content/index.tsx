@@ -594,6 +594,14 @@ function navigate(rawHref: string): void {
   } catch {
     return
   }
+  // Clicking a link in the terminal IS the user choosing a destination, so the home intent
+  // ends here. It used to survive: the generic pointerdown clear deliberately skips clicks
+  // inside a visible terminal, and the mount branch only clears once the route settles off a
+  // home path — so an intent armed by a summon stayed live for its full TTL. The route watcher
+  // then treated this navigation as one more automatic home landing, re-marked the destination
+  // and remounted over it, and the address bar snapped back to the mask about 650ms after the
+  // click (the settle re-check). The second click worked because the bounce cleared the intent.
+  setPendingHome(false)
   // Restore the real URL first, so the destination stacks on a real history entry and Back
   // returns to a real fomo page (which remounts the terminal and re-masks). Also restores
   // the real pathname for the comparison below — while masked it reads as the parked path.
