@@ -1369,11 +1369,23 @@
  * resize grip to the bottom-right. Dragged from anywhere on it, so the whole
  * surface is the handle and only the button opts out.
  *
+ * Proportions are measured off Axiom's own balance/pnl readout (234x57 live): the
+ * two numbers sit hard against the card's edges at matching insets — 16px left,
+ * 15px right, its right column right-aligned — and its label is nearly as large
+ * as its value (14px against 16px), which is what makes a small card read as
+ * full rather than sparse. fobo keeps its own uppercase micro-labels, but takes
+ * the spacing and the size relationship.
+ *
  * Type scales with the card. The card is a size container, so the labels, the
  * numbers and the reset glyph are all sized in cq units: min() takes whichever
  * of width or height is the binding constraint, and clamp() keeps the result
  * legible at the smallest size and sane at the largest. The width term is what
- * stops a wide number outgrowing its half as the card shrinks.
+ * stops a wide number outgrowing its half as the card shrinks — the coefficient
+ * is set from the widest string the card can hold (+$999.9k twice over).
+ *
+ * Mind the basis: cq units resolve against the container's CONTENT box, not its
+ * border box — 226x50 inside a 260x68 card once the border and padding are off —
+ * so these coefficients are larger than the card's own dimensions suggest.
  *
  * position: fixed rather than absolute: the host is `position: fixed; inset: 0`
  * with no transformed ancestor, so viewport coordinates ARE terminal
@@ -1388,8 +1400,8 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: center;
-  gap: 0.625rem;
-  padding: 0.5rem 0.625rem;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
   overflow: hidden;
   border: 1px solid var(--fobo-border-soft);
   border-radius: var(--fobo-radius);
@@ -1401,7 +1413,7 @@
   touch-action: none;
   /* One source of truth for the corner control: its own size, and the space the right column
      keeps clear for it. */
-  --pnlcard-control: clamp(1.125rem, min(9cqw, 30cqh), 2.25rem);
+  --pnlcard-control: clamp(1rem, min(9.5cqw, 42cqh), 2.25rem);
 }
 .pnlcard:active { cursor: grabbing; }
 
@@ -1413,13 +1425,28 @@
 }
 
 /*
- * The right half reserves the corner control's width so a long number can never run under
- * it — that reservation, not a narrower column, is what keeps the split an even 50/50.
+ * The right half is right-aligned, so its number ends at the same inset from the card's edge
+ * that the balance starts at. Only the LABEL steps aside for the corner control: reserving
+ * that width on the whole column was what left the number stranded near the middle.
  */
-.pnlcard-cell-right { padding-right: calc(var(--pnlcard-control) + 0.375rem); }
+.pnlcard-cell-right {
+  align-items: flex-end;
+  text-align: right;
+}
+.pnlcard-cell-right .pnlcard-label { justify-content: flex-end; }
+.pnlcard-cell-right .pnlcard-label { padding-right: calc(var(--pnlcard-control) + 0.375rem); }
 
+/*
+ * The label row is at least as tall as the corner control, in both columns, so the numbers
+ * start below the button's band and the flush-right one can never run under it — while the
+ * two columns keep their labels on the same line. It also lets the pair fill the card's
+ * height rather than floating in the middle of it.
+ */
 .pnlcard-label {
-  font-size: clamp(0.5rem, min(4.2cqw, 14cqh), 1rem);
+  min-height: var(--pnlcard-control);
+  display: flex;
+  align-items: center;
+  font-size: clamp(0.5625rem, min(5.6cqw, 26cqh), 1.25rem);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1430,7 +1457,7 @@
 }
 
 .pnlcard-value {
-  font-size: clamp(0.6875rem, min(6.5cqw, 22cqh), 2.25rem);
+  font-size: clamp(0.75rem, min(8.5cqw, 40cqh), 2.5rem);
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;

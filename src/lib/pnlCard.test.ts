@@ -41,14 +41,14 @@ describe('sanitizePnlSettings', () => {
 
 describe('clampGeometry', () => {
   it('leaves a card that already fits alone', () => {
-    const fits = { x: 100, y: 120, width: 200, height: 96 }
+    const fits = { x: 100, y: 120, width: 260, height: 96 }
     expect(clampGeometry(fits, 1_280, 800)).toEqual(fits)
   })
 
   it('pulls a card dragged past an edge back into view', () => {
-    expect(clampGeometry({ x: -40, y: -10, width: 200, height: 96 }, 1_280, 800)).toMatchObject({ x: 0, y: 0 })
-    expect(clampGeometry({ x: 5_000, y: 5_000, width: 200, height: 96 }, 1_280, 800)).toMatchObject({
-      x: 1_080,
+    expect(clampGeometry({ x: -40, y: -10, width: 260, height: 96 }, 1_280, 800)).toMatchObject({ x: 0, y: 0 })
+    expect(clampGeometry({ x: 5_000, y: 5_000, width: 260, height: 96 }, 1_280, 800)).toMatchObject({
+      x: 1_020,
       y: 704,
     })
   })
@@ -62,7 +62,7 @@ describe('clampGeometry', () => {
   })
 
   it('never shrinks below the minimum, even in a window smaller than the card', () => {
-    const squeezed = clampGeometry({ x: 10, y: 10, width: 200, height: 96 }, 80, 40)
+    const squeezed = clampGeometry({ x: 10, y: 10, width: 260, height: 96 }, 80, 40)
     expect(squeezed.width).toBe(PNL_MIN_WIDTH)
     expect(squeezed.height).toBe(PNL_MIN_HEIGHT)
     expect(squeezed.x).toBe(0)

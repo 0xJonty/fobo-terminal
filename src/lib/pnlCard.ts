@@ -18,7 +18,7 @@ export const PNL_KEY = 'fobo:pnl'
 /** Same guard as the other storage readers: a hung read must not leave the card unrendered. */
 const STORAGE_READ_TIMEOUT_MS = 1_000
 
-export const PNL_MIN_WIDTH = 200
+export const PNL_MIN_WIDTH = 210
 export const PNL_MIN_HEIGHT = 56
 export const PNL_MAX_WIDTH = 560
 export const PNL_MAX_HEIGHT = 420
@@ -47,14 +47,14 @@ export interface PnlCardSettings extends PnlCardState {
 
 /**
  * Opens under the top bar at the left edge of the first column, out of the header's way.
- * The default width is measured, not guessed: the widest string the card can hold before the
- * numbers change unit (+$999.9k, 81px in fomo's face) needs 224px for two of them plus the
- * reset control and the padding, so 230 clears the worst case without ellipsis.
+ * The default size is measured, not guessed: at the type scale the card now uses, two of the
+ * widest string it can hold (+$999.9k) plus Axiom's 16px edge insets and the gap between the
+ * columns need ~250px, so 260 clears the worst case without ellipsis.
  */
 export const PNL_DEFAULT: PnlCardSettings = {
   x: 24,
   y: 108,
-  width: 230,
+  width: 260,
   height: 68,
   baselineUsd: null,
   enabled: true,
