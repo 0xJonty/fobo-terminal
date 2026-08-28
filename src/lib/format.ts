@@ -45,6 +45,54 @@ export function usdDelta(value: number | undefined): string {
   })}`
 }
 
+/**
+ * Compact dollars for the PnL card: $1k / $15.9k / $1.5m.
+ *
+ * Precision follows the REAL magnitude, not the scaled one — one decimal from $10,000 up,
+ * two below it. A suffixed number drops its trailing zeros, so a round thousand reads as $1k
+ * rather than $1.00k; plain dollars under $1,000 keep their cents ($12.50), because there
+ * they are cents and not padding. Deliberately separate from usd(): that one mirrors Intl's
+ * compact notation (uppercase $1.2K) for the token columns, this is the card's house style.
+ */
+const COMPACT_UNITS = [
+  { limit: 1e12, suffix: 't' },
+  { limit: 1e9, suffix: 'b' },
+  { limit: 1e6, suffix: 'm' },
+  { limit: 1e3, suffix: 'k' },
+] as const
+
+function trimZeros(fixed: string): string {
+  if (!fixed.includes('.')) return fixed
+  return fixed.replace(/0+$/, '').replace(/\.$/, '')
+}
+
+export function usdCompact(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+  const digits = abs >= 10_000 ? 1 : 2
+
+  // The largest unit at or below the value; none means plain dollars, under $1,000.
+  let unit = COMPACT_UNITS.find((candidate) => abs >= candidate.limit)
+  let shown = (unit ? abs / unit.limit : abs).toFixed(digits)
+
+  // Rounding can carry a number into the next unit up ($999,999.95 is 1000.0k, i.e. $1m).
+  if (Number(shown) >= 1000) {
+    const bigger = COMPACT_UNITS[(unit ? COMPACT_UNITS.indexOf(unit) : COMPACT_UNITS.length) - 1]
+    if (bigger) {
+      unit = bigger
+      shown = (abs / bigger.limit).toFixed(digits)
+    }
+  }
+  return unit ? `${sign}$${trimZeros(shown)}${unit.suffix}` : `${sign}$${shown}`
+}
+
+/** The same compact dollars as a signed delta, for a PnL figure: +$1.5k / -$320.40 */
+export function usdCompactDelta(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return value > 0 ? `+${usdCompact(value)}` : usdCompact(value)
+}
+
 /** A wallet cohort's share of supply: 71%. Unsigned — a share is not a delta. */
 export function share(value: number | undefined, digits = 0): string {
   if (value === undefined || !Number.isFinite(value)) return '—'

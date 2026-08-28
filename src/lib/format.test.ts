@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { age, percent, share, shortAddress, tickerPrice, usd, usdDelta, usdExact } from '~/lib/format'
+import {
+  age,
+  percent,
+  share,
+  shortAddress,
+  tickerPrice,
+  usd,
+  usdCompact,
+  usdCompactDelta,
+  usdDelta,
+  usdExact,
+} from '~/lib/format'
 
 describe('usd', () => {
   it('formats compact values with the sign before the symbol', () => {
@@ -40,5 +51,47 @@ describe('other formatters', () => {
     expect(tickerPrice(0.00001234)).toBe('$0.0000123')
     expect(tickerPrice(0)).toBe('$0')
     expect(tickerPrice(undefined)).toBe('$0')
+  })
+})
+
+describe('usdCompact', () => {
+  it('suffixes round thousands and millions without trailing zeros', () => {
+    expect(usdCompact(1_000)).toBe('$1k')
+    expect(usdCompact(10_000)).toBe('$10k')
+    expect(usdCompact(100_000)).toBe('$100k')
+    expect(usdCompact(1_000_000)).toBe('$1m')
+    expect(usdCompact(2_500_000_000)).toBe('$2.5b')
+  })
+
+  it('takes its precision from the real magnitude: two decimals under $10,000, one above', () => {
+    expect(usdCompact(1_234)).toBe('$1.23k')
+    expect(usdCompact(1_500)).toBe('$1.5k')
+    expect(usdCompact(15_949)).toBe('$15.9k')
+    expect(usdCompact(1_500_000)).toBe('$1.5m')
+  })
+
+  it('renders under $1,000 as plain dollars', () => {
+    expect(usdCompact(0)).toBe('$0.00')
+    expect(usdCompact(12.5)).toBe('$12.50')
+    expect(usdCompact(999.99)).toBe('$999.99')
+  })
+
+  it('carries a rounded value into the next unit instead of showing 1000.0k', () => {
+    expect(usdCompact(999.999)).toBe('$1k')
+    expect(usdCompact(999_999.95)).toBe('$1m')
+  })
+
+  it('puts the sign before the symbol, and has nothing to show for nothing', () => {
+    expect(usdCompact(-1_200)).toBe('-$1.2k')
+    expect(usdCompact(-45.6)).toBe('-$45.60')
+    expect(usdCompact(undefined)).toBe('—')
+    expect(usdCompact(Number.NaN)).toBe('—')
+  })
+
+  it('usdCompactDelta signs a gain and leaves flat unsigned', () => {
+    expect(usdCompactDelta(1_500)).toBe('+$1.5k')
+    expect(usdCompactDelta(-1_500)).toBe('-$1.5k')
+    expect(usdCompactDelta(0)).toBe('$0.00')
+    expect(usdCompactDelta(undefined)).toBe('—')
   })
 })

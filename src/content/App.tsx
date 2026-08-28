@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BottomBar } from '~/ui/BottomBar'
 import { Column } from '~/ui/Column'
 import { HoldingsBar } from '~/ui/HoldingsBar'
+import { PnlCard } from '~/ui/PnlCard'
 import { SidePanel } from '~/ui/SidePanel'
 import { TopBar } from '~/ui/TopBar'
 import {
@@ -635,6 +636,9 @@ export function App({
       </div>
 
       <BottomBar onNavigate={onOpen} />
+
+      {/* Floats over everything above; last in the DOM so it also paints last. */}
+      <PnlCard />
     </div>
   )
 }

@@ -1,0 +1,118 @@
+/**
+ * The PnL card's own state: where it sits, how big it is, and the balance its PnL counts
+ * from. Stored in chrome.storage.sync beside the other preferences (see settings.ts), so a
+ * dragged card and a zeroed baseline both survive a reload and follow the Chrome profile.
+ *
+ * The PnL figure itself is never stored — it is always (current balance - baseline),
+ * recomputed from whatever /balances reports now. Only the baseline persists, and that is
+ * what makes "reset" mean something across sessions: it is the number the user last zeroed
+ * at. Deposits and withdrawals move the balance without being profit, so the figure is a
+ * since-you-last-reset delta, not fomo's own pnl accounting — fomo owns that (the header's
+ * 24h change and the holdings bar percentages come from its selectors, untouched).
+ */
+
+import { debounce, withTimeout } from '~/lib/async'
+
+export const PNL_KEY = 'fobo:pnl'
+
+/** Same guard as the other storage readers: a hung read must not leave the card unrendered. */
+const STORAGE_READ_TIMEOUT_MS = 1_000
+
+export const PNL_MIN_WIDTH = 150
+export const PNL_MIN_HEIGHT = 82
+export const PNL_MAX_WIDTH = 560
+export const PNL_MAX_HEIGHT = 420
+
+export interface PnlCardGeometry {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface PnlCardSettings extends PnlCardGeometry {
+  /** The balance the PnL counts from; null until the first reading seeds it. */
+  baselineUsd: number | null
+}
+
+/** Opens under the top bar at the left edge of the first column, out of the header's way. */
+export const PNL_DEFAULT: PnlCardSettings = {
+  x: 24,
+  y: 108,
+  width: 200,
+  height: 96,
+  baselineUsd: null,
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/** Clamp and default whatever is in storage, so a bad write can never break the layout. */
+export function sanitizePnlSettings(raw: unknown): PnlCardSettings {
+  const row = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+  return {
+    x: Math.round(finiteOr(row.x, PNL_DEFAULT.x)),
+    y: Math.round(finiteOr(row.y, PNL_DEFAULT.y)),
+    width: Math.round(clamp(finiteOr(row.width, PNL_DEFAULT.width), PNL_MIN_WIDTH, PNL_MAX_WIDTH)),
+    height: Math.round(clamp(finiteOr(row.height, PNL_DEFAULT.height), PNL_MIN_HEIGHT, PNL_MAX_HEIGHT)),
+    baselineUsd:
+      typeof row.baselineUsd === 'number' && Number.isFinite(row.baselineUsd) ? row.baselineUsd : null,
+  }
+}
+
+/**
+ * Keep the card inside the terminal. The size gives way first (a window narrower than the
+ * card shrinks it), then the position is clamped against the size that survived — so a card
+ * saved on a wide monitor, or dragged while the window was resized under it, can never come
+ * back out of reach.
+ */
+export function clampGeometry(
+  geometry: PnlCardGeometry,
+  viewportWidth: number,
+  viewportHeight: number,
+): PnlCardGeometry {
+  const width = Math.round(
+    clamp(geometry.width, PNL_MIN_WIDTH, Math.max(PNL_MIN_WIDTH, Math.min(PNL_MAX_WIDTH, viewportWidth))),
+  )
+  const height = Math.round(
+    clamp(geometry.height, PNL_MIN_HEIGHT, Math.max(PNL_MIN_HEIGHT, Math.min(PNL_MAX_HEIGHT, viewportHeight))),
+  )
+  return {
+    width,
+    height,
+    x: Math.round(clamp(geometry.x, 0, Math.max(0, viewportWidth - width))),
+    y: Math.round(clamp(geometry.y, 0, Math.max(0, viewportHeight - height))),
+  }
+}
+
+/** Defaults when the extension context is gone (orphaned content script) or storage throws. */
+export async function readPnlSettings(): Promise<PnlCardSettings> {
+  try {
+    const stored = await withTimeout(chrome.storage.sync.get(PNL_KEY), STORAGE_READ_TIMEOUT_MS, {})
+    return sanitizePnlSettings(stored[PNL_KEY])
+  } catch {
+    return PNL_DEFAULT
+  }
+}
+
+function writePnlSettings(settings: PnlCardSettings): void {
+  try {
+    chrome.storage.sync.set({ [PNL_KEY]: settings }).catch(() => {
+      /* quota or a context already gone — the card just does not persist this time */
+    })
+  } catch {
+    /* context already gone */
+  }
+}
+
+/**
+ * Debounced write, like the panel settings: a drag commits on release, but a window resize
+ * can re-clamp several times in a row and chrome.storage.sync caps writes at 120/minute.
+ * The last value wins.
+ */
+export const savePnlSettings: (settings: PnlCardSettings) => void = debounce(writePnlSettings, 400)
