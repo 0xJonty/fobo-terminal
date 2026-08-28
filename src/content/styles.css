@@ -1417,6 +1417,8 @@
 .pnlcard:active { cursor: grabbing; }
 
 .pnlcard-cell {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1484,6 +1486,13 @@
 .pnlcard-fill {
   position: absolute;
   inset: 0;
+  /*
+   * Load-bearing, with the z-index on .pnlcard-cell below. An absolutely positioned element
+   * paints AFTER in-flow content, so this opaque layer covered the balance and the pnl
+   * outright — the numbers were simply not on screen. pointer-events: none hid it from
+   * elementFromPoint too, so a hit test called it fine; only the pixels showed it.
+   */
+  z-index: 0;
   border-radius: inherit;
   pointer-events: none;
   background-color: var(--fobo-surface);
@@ -1492,7 +1501,7 @@
     repeating-linear-gradient(45deg, rgb(203 208 235 / 0.03) 0 2px, transparent 2px 10px);
   background-repeat: no-repeat, repeat;
   background-position: bottom 6% center, 0 0;
-  background-size: auto 22%, auto;
+  background-size: auto 11%, auto;
 }
 /* A picked image replaces both layers and covers the card; React sets the url inline. */
 .pnlcard-fill[data-custom] {
