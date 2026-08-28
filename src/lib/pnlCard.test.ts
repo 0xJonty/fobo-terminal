@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   PNL_DEFAULT,
+  PNL_MAX_HEIGHT,
   PNL_MAX_WIDTH,
   PNL_MIN_HEIGHT,
   PNL_MIN_WIDTH,
   clampGeometry,
+  dragGeometry,
   sanitizePnlSettings,
 } from '~/lib/pnlCard'
 
@@ -59,5 +61,26 @@ describe('clampGeometry', () => {
     expect(squeezed.height).toBe(PNL_MIN_HEIGHT)
     expect(squeezed.x).toBe(0)
     expect(squeezed.y).toBe(0)
+  })
+})
+
+describe('dragGeometry', () => {
+  const start = { x: 100, y: 120, width: 200, height: 96 }
+
+  it('slides the card on a move, leaving the size alone', () => {
+    expect(dragGeometry('move', start, 40, -30)).toEqual({ x: 140, y: 90, width: 200, height: 96 })
+  })
+
+  it('pulls the bottom-right corner on a resize, leaving the position alone', () => {
+    expect(dragGeometry('resize', start, 60, 24)).toEqual({ x: 100, y: 120, width: 260, height: 120 })
+  })
+
+  it('holds a resize inside its bounds however far the pointer travels', () => {
+    const shrunk = dragGeometry('resize', start, -900, -900)
+    expect(shrunk.width).toBe(PNL_MIN_WIDTH)
+    expect(shrunk.height).toBe(PNL_MIN_HEIGHT)
+    const grown = dragGeometry('resize', start, 9_000, 9_000)
+    expect(grown.width).toBe(PNL_MAX_WIDTH)
+    expect(grown.height).toBe(PNL_MAX_HEIGHT)
   })
 })

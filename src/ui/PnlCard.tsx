@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usdCompact, usdCompactDelta } from '~/lib/format'
 import {
-  PNL_MAX_HEIGHT,
-  PNL_MAX_WIDTH,
-  PNL_MIN_HEIGHT,
-  PNL_MIN_WIDTH,
   clampGeometry,
+  dragGeometry,
   readPnlSettings,
   savePnlSettings,
   type PnlCardGeometry,
   type PnlCardSettings,
+  type PnlDragMode,
 } from '~/lib/pnlCard'
 import { useResource } from '~/lib/resource'
 import { balances } from '~/lib/session'
@@ -29,10 +27,8 @@ import { balances } from '~/lib/session'
  * escapes the shell's `overflow: hidden` instead of being clipped by it.
  */
 
-type DragMode = 'move' | 'resize'
-
 interface DragState {
-  mode: DragMode
+  mode: PnlDragMode
   pointerId: number
   startX: number
   startY: number
@@ -94,7 +90,15 @@ export function PnlCard() {
 
   const drag = useRef<DragState | null>(null)
 
-  const beginDrag = (mode: DragMode) => (event: React.PointerEvent<HTMLElement>) => {
+  // The latest committed geometry, for the release handler: pointerup lands after the last
+  // move's render, so this is what the user actually let go of. Reading it from a ref keeps
+  // the storage write out of a state updater, which React is free to run more than once.
+  const latest = useRef<PnlCardSettings | null>(null)
+  useEffect(() => {
+    latest.current = settings
+  }, [settings])
+
+  const beginDrag = (mode: PnlDragMode) => (event: React.PointerEvent<HTMLElement>) => {
     if (!settings) return
     // The reset button lives in the drag handle; a click on it is not a drag.
     if ((event.target as HTMLElement).closest('button')) return
@@ -112,17 +116,13 @@ export function PnlCard() {
   const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
-    const dx = event.clientX - state.startX
-    const dy = event.clientY - state.startY
     const { width: vw, height: vh } = viewport()
-    const moved: PnlCardGeometry =
-      state.mode === 'move'
-        ? { ...state.start, x: state.start.x + dx, y: state.start.y + dy }
-        : {
-            ...state.start,
-            width: Math.min(PNL_MAX_WIDTH, Math.max(PNL_MIN_WIDTH, state.start.width + dx)),
-            height: Math.min(PNL_MAX_HEIGHT, Math.max(PNL_MIN_HEIGHT, state.start.height + dy)),
-          }
+    const moved = dragGeometry(
+      state.mode,
+      state.start,
+      event.clientX - state.startX,
+      event.clientY - state.startY,
+    )
     setSettings((current) => (current ? { ...current, ...clampGeometry(moved, vw, vh) } : current))
   }
 
@@ -130,10 +130,7 @@ export function PnlCard() {
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
     drag.current = null
-    setSettings((current) => {
-      if (current) savePnlSettings(current)
-      return current
-    })
+    if (latest.current) savePnlSettings(latest.current)
   }
 
   const reset = () => {

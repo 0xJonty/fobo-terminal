@@ -90,6 +90,28 @@ export function clampGeometry(
   }
 }
 
+export type PnlDragMode = 'move' | 'resize'
+
+/**
+ * The geometry a gesture produces, before it is clamped to the viewport: a move slides the
+ * whole card, a resize pulls its bottom-right corner (the top-left stays put, so the card
+ * grows away from wherever it sits). Pure, so the arithmetic behind the drag can be checked
+ * without a browser — the caller clamps the result with clampGeometry.
+ */
+export function dragGeometry(
+  mode: PnlDragMode,
+  start: PnlCardGeometry,
+  dx: number,
+  dy: number,
+): PnlCardGeometry {
+  if (mode === 'move') return { ...start, x: start.x + dx, y: start.y + dy }
+  return {
+    ...start,
+    width: clamp(start.width + dx, PNL_MIN_WIDTH, PNL_MAX_WIDTH),
+    height: clamp(start.height + dy, PNL_MIN_HEIGHT, PNL_MAX_HEIGHT),
+  }
+}
+
 /** Defaults when the extension context is gone (orphaned content script) or storage throws. */
 export async function readPnlSettings(): Promise<PnlCardSettings> {
   try {
