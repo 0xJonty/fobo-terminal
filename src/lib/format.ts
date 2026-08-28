@@ -46,13 +46,13 @@ export function usdDelta(value: number | undefined): string {
 }
 
 /**
- * Compact dollars for the PnL card: $1k / $9.999k / $1.543m.
+ * Compact dollars for the PnL card: $1k / $9.99k / $15.9k / $1.5m.
  *
  * TRUNCATED, never rounded — a balance of $9,999 must not read as $10k, and a loss must not
- * read deeper than it is. Three decimals from $1,000 up (so the thousands digit is never
- * lost), cents below it, and trailing zeros dropped on a suffixed number so a round thousand
- * still reads as $1k. Deliberately separate from usd(), which mirrors Intl's rounded compact
- * notation (uppercase $1.2K) for the token columns.
+ * read deeper than it is. Precision follows the REAL magnitude, not the scaled one: one
+ * decimal from $10,000 up, two below it, cents under $1,000. Trailing zeros are dropped on a
+ * suffixed number so a round thousand still reads as $1k. Deliberately separate from usd(),
+ * which mirrors Intl's rounded compact notation (uppercase $1.2K) for the token columns.
  */
 const COMPACT_UNITS = [
   { limit: 1e12, suffix: 't' },
@@ -62,13 +62,17 @@ const COMPACT_UNITS = [
 ] as const
 
 /**
- * Cut, do not round, at `digits` decimals. The extra guard digits absorb the noise a binary
- * float carries (15.949 can land as 15.948999999999998, which a naive cut would show as
- * 15.948); toFixed only rounds four places below anything on screen, and the string slice
- * that follows cannot round at all.
+ * Cut, do not round, at `digits` decimals.
+ *
+ * The guard digits exist to absorb the noise a binary float carries — 15.949 can land as
+ * 15.948999999999998, which a naive cut would show as 15.948 — and there are twelve of them
+ * because a handful is not enough: at four, toFixed rounded 1.999999 up to 2.000000 before
+ * the cut ever ran, and $1,999,999 read as $2m. Twelve sits below double's own precision, so
+ * it swallows representation error without touching a digit the number really has. The string
+ * slice that follows cannot round at all.
  */
 function truncateTo(value: number, digits: number): string {
-  const fixed = value.toFixed(digits + 4)
+  const fixed = value.toFixed(digits + 12)
   const dot = fixed.indexOf('.')
   return fixed.slice(0, dot + 1 + digits)
 }
@@ -85,7 +89,8 @@ export function usdCompact(value: number | undefined): string {
   const unit = COMPACT_UNITS.find((candidate) => abs >= candidate.limit)
   // Truncation can never carry a number up into the next unit, so there is no overflow case.
   if (!unit) return `${sign}$${truncateTo(abs, 2)}`
-  return `${sign}$${trimZeros(truncateTo(abs / unit.limit, 3))}${unit.suffix}`
+  const digits = abs >= 10_000 ? 1 : 2
+  return `${sign}$${trimZeros(truncateTo(abs / unit.limit, digits))}${unit.suffix}`
 }
 
 /** The same compact dollars as a signed delta, for a PnL figure: +$1.5k / -$320.40 */

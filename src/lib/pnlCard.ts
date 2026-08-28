@@ -47,14 +47,14 @@ export interface PnlCardSettings extends PnlCardState {
 
 /**
  * Opens under the top bar at the left edge of the first column, out of the header's way.
- * The default width is measured, not guessed: the widest pair the card can hold before the
- * numbers change unit ($999.999k beside +$999.999k) needs 264px including the reset control
- * and the padding, so 270 fits the worst case without ellipsis.
+ * The default width is measured, not guessed: the widest string the card can hold before the
+ * numbers change unit (+$999.9k, 81px in fomo's face) needs 224px for two of them plus the
+ * reset control and the padding, so 230 clears the worst case without ellipsis.
  */
 export const PNL_DEFAULT: PnlCardSettings = {
   x: 24,
   y: 108,
-  width: 270,
+  width: 230,
   height: 68,
   baselineUsd: null,
   enabled: true,
