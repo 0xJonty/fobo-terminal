@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { RotateCcw } from 'lucide-react'
 import { usdCompact, usdCompactDelta } from '~/lib/format'
 import {
   clampGeometry,
@@ -14,8 +15,12 @@ import { balances } from '~/lib/session'
 
 /**
  * A floating card over the terminal showing the account balance and the profit since the
- * user last zeroed it. Dragged by its header, resized from its bottom-right corner, both
- * persisted (lib/pnlCard.ts).
+ * user last zeroed it, side by side. Dragged from anywhere on it, resized from its
+ * bottom-right corner, both persisted (lib/pnlCard.ts).
+ *
+ * One pointer handler on the card owns both gestures: the target decides which. That is why
+ * the grip and the reset control carry no handlers of their own — a second set would fire on
+ * the same bubbled event and run the same drag twice.
  *
  * The balance is fomo's own portfolio total — the figure its header shows, read from the
  * shared /balances resource on the same 10s cadence as the holdings bar, so the card costs
@@ -99,10 +104,13 @@ export function PnlCard() {
     latest.current = settings
   }, [settings])
 
-  const beginDrag = (mode: PnlDragMode) => (event: React.PointerEvent<HTMLElement>) => {
-    if (!settings) return
-    // The reset button lives in the drag handle; a click on it is not a drag.
-    if ((event.target as HTMLElement).closest('button')) return
+  const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    if (!settings || event.button !== 0) return
+    const target = event.target as HTMLElement
+    // The reset control is a click, not a gesture; the corner grip resizes; everything else
+    // on the card moves it.
+    if (target.closest('button')) return
+    const mode: PnlDragMode = target.closest('.pnlcard-grip') ? 'resize' : 'move'
     event.preventDefault()
     drag.current = {
       mode,
@@ -111,6 +119,7 @@ export function PnlCard() {
       startY: event.clientY,
       start: { x: settings.x, y: settings.y, width: settings.width, height: settings.height },
     }
+    // Captured on the card itself, so a pointer that outruns the card keeps the gesture.
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
@@ -152,48 +161,36 @@ export function PnlCard() {
       className="pnlcard"
       aria-label="PnL"
       style={{ left: settings.x, top: settings.y, width: settings.width, height: settings.height }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
     >
-      <header
-        className="pnlcard-head"
-        onPointerDown={beginDrag('move')}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
-        <span className="pnlcard-title">PnL</span>
-        <button
-          type="button"
-          className="pnlcard-reset"
-          title="Zero the PnL at the current balance"
-          disabled={balanceUsd === undefined}
-          onClick={reset}
-        >
-          Reset
-        </button>
-      </header>
-
-      <div className="pnlcard-body">
-        <div className="pnlcard-row">
-          <span className="pnlcard-label">Balance</span>
-          <span className="pnlcard-value">{usdCompact(balanceUsd)}</span>
-        </div>
-        <div className="pnlcard-row">
-          <span className="pnlcard-label">PnL</span>
-          <span className="pnlcard-value" data-tone={tone}>
-            {usdCompactDelta(pnl)}
-          </span>
-        </div>
+      <div className="pnlcard-cell">
+        <span className="pnlcard-label">Balance</span>
+        <span className="pnlcard-value">{usdCompact(balanceUsd)}</span>
       </div>
 
-      <div
-        className="pnlcard-grip"
-        role="separator"
-        aria-label="Resize PnL card"
-        onPointerDown={beginDrag('resize')}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      />
+      <div className="pnlcard-cell">
+        <span className="pnlcard-label">PnL</span>
+        <span className="pnlcard-value" data-tone={tone}>
+          {usdCompactDelta(pnl)}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        className="pnlcard-reset"
+        title="Zero the PnL at the current balance"
+        aria-label="Zero the PnL at the current balance"
+        disabled={balanceUsd === undefined}
+        onClick={reset}
+      >
+        <RotateCcw size={14} aria-hidden="true" />
+      </button>
+
+      {/* Purely the corner affordance — the gesture belongs to the card's own handler. */}
+      <div className="pnlcard-grip" aria-hidden="true" />
     </section>
   )
 }

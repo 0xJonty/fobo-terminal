@@ -1364,59 +1364,74 @@
 }
 
 /* ----------------------------------------------------------------------------
- * PnL card — a floating readout over the columns, dragged by its header and
- * resized from its bottom-right corner (ui/PnlCard.tsx). position: fixed rather
- * than absolute: the host is `position: fixed; inset: 0` with no transformed
- * ancestor, so viewport coordinates ARE terminal coordinates, and the card
- * escapes .shell's overflow clip instead of being cut off by it.
+ * PnL card — a floating readout over the columns: balance on the left, profit on
+ * the right, a reset control and the resize corner. Dragged from anywhere on it,
+ * so the whole surface is the handle and only the button opts out.
+ *
+ * position: fixed rather than absolute: the host is `position: fixed; inset: 0`
+ * with no transformed ancestor, so viewport coordinates ARE terminal
+ * coordinates, and the card escapes .shell's overflow clip instead of being cut
+ * off by it.
  * ------------------------------------------------------------------------- */
 
 .pnlcard {
   position: fixed;
   z-index: 80;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
   overflow: hidden;
   border: 1px solid var(--fobo-border-soft);
   border-radius: var(--fobo-radius);
   background: var(--fobo-surface);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
   user-select: none;
-}
-
-.pnlcard-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-shrink: 0;
-  height: 1.75rem;
-  padding: 0 0.5rem;
-  border-bottom: 1px solid var(--fobo-border-soft);
   cursor: grab;
   /* The drag is pointer-driven; without this a touch drag scrolls the page instead. */
   touch-action: none;
 }
-.pnlcard-head:active { cursor: grabbing; }
+.pnlcard:active { cursor: grabbing; }
 
-.pnlcard-title {
-  font-size: 0.6875rem;
+.pnlcard-cell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.pnlcard-label {
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--fobo-text-2);
+  color: var(--fobo-text-3);
 }
 
+.pnlcard-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pnlcard-value[data-tone='up'] { color: var(--fobo-green); }
+.pnlcard-value[data-tone='down'] { color: var(--fobo-red); }
+
 .pnlcard-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 0 0.375rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  padding: 0;
   border: 1px solid var(--fobo-border-soft);
-  border-radius: 0.25rem;
+  border-radius: 0.375rem;
   background: transparent;
-  color: var(--fobo-text-2);
-  font: inherit;
-  font-size: 0.6875rem;
-  line-height: 1.125rem;
+  color: var(--fobo-text-3);
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
 }
@@ -1426,39 +1441,6 @@
 }
 .pnlcard-reset:disabled { opacity: 0.4; cursor: default; }
 
-.pnlcard-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  overflow: hidden;
-}
-
-.pnlcard-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.pnlcard-label {
-  font-size: 0.6875rem;
-  color: var(--fobo-text-3);
-}
-
-.pnlcard-value {
-  font-size: 0.875rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pnlcard-value[data-tone='up'] { color: var(--fobo-green); }
-.pnlcard-value[data-tone='down'] { color: var(--fobo-red); }
-
 .pnlcard-grip {
   position: absolute;
   right: 0;
@@ -1466,7 +1448,6 @@
   width: 0.875rem;
   height: 0.875rem;
   cursor: nwse-resize;
-  touch-action: none;
   background: linear-gradient(
     135deg,
     transparent 0 55%,

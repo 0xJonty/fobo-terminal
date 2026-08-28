@@ -18,8 +18,8 @@ export const PNL_KEY = 'fobo:pnl'
 /** Same guard as the other storage readers: a hung read must not leave the card unrendered. */
 const STORAGE_READ_TIMEOUT_MS = 1_000
 
-export const PNL_MIN_WIDTH = 150
-export const PNL_MIN_HEIGHT = 82
+export const PNL_MIN_WIDTH = 200
+export const PNL_MIN_HEIGHT = 56
 export const PNL_MAX_WIDTH = 560
 export const PNL_MAX_HEIGHT = 420
 
@@ -45,12 +45,17 @@ export interface PnlCardSettings extends PnlCardState {
   enabled: boolean
 }
 
-/** Opens under the top bar at the left edge of the first column, out of the header's way. */
+/**
+ * Opens under the top bar at the left edge of the first column, out of the header's way.
+ * The default width is measured, not guessed: the widest pair the card can hold before the
+ * numbers change unit ($999.999k beside +$999.999k) needs 264px including the reset control
+ * and the padding, so 270 fits the worst case without ellipsis.
+ */
 export const PNL_DEFAULT: PnlCardSettings = {
   x: 24,
   y: 108,
-  width: 200,
-  height: 96,
+  width: 270,
+  height: 68,
   baselineUsd: null,
   enabled: true,
 }
