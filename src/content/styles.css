@@ -1475,9 +1475,11 @@
  * or the controls: a readout faded to nothing is not a setting anyone wants, and it would
  * take the control that undoes it along with it.
  *
- * The default is the design's leading direction: a 45-degree weave at ~3% of fomo's own
- * #CBD0EB — present at a glance, invisible behind a number — with the fobo wordmark centred
- * on the bottom edge, built from the same letterform geometry as the top bar's (ui/TopBar).
+ * The default is the design's chosen direction: concentric rings struck from a point just
+ * below the card's bottom edge, echoing the bowls of the wordmark they sweep around, at ~4.5%
+ * of fomo's own #CBD0EB — present at a glance, invisible behind a number. The wordmark sits
+ * centred on the bottom edge, built from the same letterform geometry as the top bar's
+ * (ui/TopBar).
  *
  * The wordmark is base64, not a readable inline SVG, for one reason: its path data carries
  * double quotes, which close the url() string and make CSS drop the whole declaration
@@ -1498,7 +1500,11 @@
   background-color: var(--fobo-surface);
   background-image:
     url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCA2Ni4xIDI0JyBmaWxsPSdub25lJz48cGF0aCBkPSJNMC4wMDA3MzA1MzMgNC45NjM1MUMwLjAwMDczMDUzMyAxLjgwMTkzIDEuNzAwNDggMCA1LjMwMzYgMEg4Ljk2QzkuMDgxMTUgMCA5LjE3ODk1IDAuMDk3Nzk1OSA5LjE3ODk1IDAuMjE4OTQ2VjMuOTI4NjJDOS4xNzg5NSA0LjA0OTc3IDkuMDgxMTUgNC4xNDc1NyA4Ljk2IDQuMTQ3NTdINi4xMTk1NEM1LjIwMTQzIDQuMTQ3NTcgNC43OTM0NiA0LjU1NTU0IDQuNzkzNDYgNS40MzkzNVY2LjEwNDIxQzQuNzkzNDYgNi4yMjUzNiA0Ljg5MTI1IDYuMzIzMTYgNS4wMTI0IDYuMzIzMTZIOC43NDEwNkM4Ljg2MjIxIDYuMzIzMTYgOC45NiA2LjQyMDk2IDguOTYgNi41NDIxMVYxMC4yMTc1QzguOTYgMTAuMzM4NiA4Ljg2MjIxIDEwLjQzNjQgOC43NDEwNiAxMC40MzY0SDUuMDEyNEM0Ljg5MTI1IDEwLjQzNjQgNC43OTM0NiAxMC41MzQyIDQuNzkzNDYgMTAuNjU1NFYyMy41Nzc2QzQuNzkzNDYgMjMuNjk4NyA0LjY5NTY2IDIzLjc5NjUgNC41NzQ1MSAyMy43OTY1SDAuMjE4OTQ2QzAuMDk3Nzk1OSAyMy43OTY1IDAgMjMuNjk4NyAwIDIzLjU3NzZWNC45NjM1MUgwLjAwMDczMDUzM1oiIGZpbGw9IiNDQkQwRUIiLz48cGF0aCBkPSJNOC44MDYgMTUuMDU5N2E5LjIxMjUgOC45NDAzIDAgMSAxIDE4LjQyNSAwYTkuMjEyNSA4Ljk0MDMgMCAxIDEgLTE4LjQyNSAwWk0xMy43MDEgMTUuMDU5N2E0LjMxNzMgNC45MjkyIDAgMSAwIDguNjM0NiAwYTQuMzE3MyA0LjkyOTIgMCAxIDAgLTguNjM0NiAwWiIgZmlsbD0iI0NCRDBFQiIvPjxwYXRoIGQ9Ik0yOC4yIDAuMjE5aDQuNzl2MjMuNTc3aC00Ljc5Wk0yOC4yMDAgMTUuMDU5N2E5LjIxMjUgOC45NDAzIDAgMSAxIDE4LjQyNSAwYTkuMjEyNSA4Ljk0MDMgMCAxIDEgLTE4LjQyNSAwWk0zMy4wOTUgMTUuMDU5N2E0LjMxNzMgNC45MjkyIDAgMSAwIDguNjM0NiAwYTQuMzE3MyA0LjkyOTIgMCAxIDAgLTguNjM0NiAwWiIgZmlsbD0iI0NCRDBFQiIvPjxwYXRoIGQ9Ik00Ny42MTcgMTUuMDU5N2E5LjIxMjUgOC45NDAzIDAgMSAxIDE4LjQyNSAwYTkuMjEyNSA4Ljk0MDMgMCAxIDEgLTE4LjQyNSAwWk01Mi41MTMgMTUuMDU5N2E0LjMxNzMgNC45MjkyIDAgMSAwIDguNjM0NiAwYTQuMzE3MyA0LjkyOTIgMCAxIDAgLTguNjM0NiAwWiIgZmlsbD0iI0NCRDBFQiIvPjwvc3ZnPg=="),
-    repeating-linear-gradient(45deg, rgb(203 208 235 / 0.03) 0 2px, transparent 2px 10px);
+    repeating-radial-gradient(
+      circle at 50% 118%,
+      transparent 0 13px,
+      rgb(203 208 235 / 0.045) 13px 14px
+    );
   background-repeat: no-repeat, repeat;
   background-position: bottom 6% center, 0 0;
   background-size: auto 11%, auto;
