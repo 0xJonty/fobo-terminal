@@ -29,6 +29,13 @@ const TIMEOUT_MS = 15_000
 const BACKOFF_BASE_MS = 30_000
 const BACKOFF_MAX_MS = 600_000
 
+/**
+ * One quick retry before the ladder. A ~1.5 MB download has a wide window in which a dropped
+ * connection, a resumed laptop or a Cloudflare edge blip can kill it, and a single blip used
+ * to cost the chain thirty seconds of enrichment minimum.
+ */
+const RETRY_DELAY_MS = 1_500
+
 /** networkId -> Mobula's chainId parameter. Chains absent here simply go un-enriched. */
 const MOBULA_CHAIN: Readonly<Record<number, string>> = {
   1: 'evm:1',
@@ -48,7 +55,33 @@ const cache = new Map<number, CacheEntry>()
 const inflight = new Map<number, Promise<void>>()
 /** Per-chain failure count and the earliest time a retry is allowed. */
 const failures = new Map<number, { count: number; retryAt: number }>()
-let warnedBlocked = false
+/** One warning per failure streak: cleared on the next success, so a recurrence is visible. */
+let warned = false
+
+/**
+ * A fetch blocked by the page's CSP and a fetch killed by the network are the SAME
+ * `TypeError: Failed to fetch` — verified in Chrome — so the old warning could only name both
+ * and leave the reader to guess. A CSP block also dispatches a violation event on the
+ * document, which is the one discriminator available; record it and let the warning say which
+ * happened. Best effort: if the event does not reach this isolated world the flag simply stays
+ * false and the message falls back to describing the error itself.
+ */
+let cspBlocked = false
+try {
+  document.addEventListener('securitypolicyviolation', (event) => {
+    if (event.blockedURI.startsWith(new URL(ENDPOINT).origin)) cspBlocked = true
+  })
+} catch {
+  /* no document (a test importing this module) — the flag just stays false */
+}
+
+/** An HTTP status the server actually answered with, as opposed to a transport failure. */
+class PulseHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`)
+    this.name = 'PulseHttpError'
+  }
+}
 
 function num(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : Number(value)
@@ -81,7 +114,7 @@ async function refresh(networkId: number): Promise<void> {
   const url = `${ENDPOINT}?assetMode=false&chainId=${encodeURIComponent(chainId)}&model=default`
   countRequest('pulse')
   const response = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(TIMEOUT_MS) })
-  if (!response.ok) throw new Error(`mobula pulse ${response.status}`)
+  if (!response.ok) throw new PulseHttpError(response.status)
 
   const body = (await response.json()) as Record<string, { data?: unknown[] } | undefined>
   const rows = new Map<string, TokenMetrics>()
@@ -100,16 +133,56 @@ async function refresh(networkId: number): Promise<void> {
   cache.set(networkId, { at: Date.now(), rows })
 }
 
+/**
+ * Only a transport failure or a server-side fault is worth an immediate second attempt. A 4xx
+ * is an answer — the same request will get the same one 1.5 seconds later.
+ */
+function isTransient(error: unknown): boolean {
+  return error instanceof PulseHttpError ? error.status >= 500 : true
+}
+
+/** What actually went wrong, in the words the console reader needs. */
+function describe(error: unknown): string {
+  if (error instanceof PulseHttpError) return `the server answered ${error.status}`
+  // AbortSignal.timeout rejects with a TimeoutError DOMException, never a TypeError — so a
+  // slow response can never reach the branch below.
+  if (error instanceof DOMException) return `the request was aborted (${error.name}) after ${TIMEOUT_MS / 1000}s`
+  if (error instanceof TypeError) {
+    if (cspBlocked) return "the page's CSP blocked it (connect-src no longer allows the host)"
+    return navigator.onLine
+      ? 'the request never completed (network, DNS, or an edge error page without CORS headers)'
+      : 'the browser is offline'
+  }
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+}
+
 function noteFailure(networkId: number, error: unknown): void {
   const previous = failures.get(networkId)
   const count = (previous?.count ?? 0) + 1
   const delay = Math.min(BACKOFF_BASE_MS * 2 ** (count - 1), BACKOFF_MAX_MS)
   failures.set(networkId, { count, retryAt: Date.now() + delay })
-  // A TypeError from fetch means the request never left: CSP, network or a blocked host.
-  // Say so once, so "the cards got sparser" is diagnosable from the console.
-  if (!warnedBlocked && error instanceof TypeError) {
-    warnedBlocked = true
-    console.warn('[fobo] Mobula enrichment request failed to send (CSP or network); cards will omit holder metrics', error)
+  // Once per streak, so "the cards got sparser" is diagnosable from the console without a
+  // recurring failure scrolling past unnoticed.
+  if (warned) return
+  warned = true
+  console.warn(
+    `[fobo] Mobula enrichment failed for chain ${networkId} after a retry: ${describe(error)}. ` +
+      `Cards omit holder metrics; next attempt in ${Math.round(delay / 1000)}s.`,
+    error,
+  )
+}
+
+/**
+ * One refresh, with a single quick retry for the transient cases. The retry runs inside the
+ * chain's in-flight slot, so nothing else starts a competing download meanwhile.
+ */
+async function refreshOnce(networkId: number): Promise<void> {
+  try {
+    await refresh(networkId)
+  } catch (error) {
+    if (!isTransient(error)) throw error
+    await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS))
+    await refresh(networkId)
   }
 }
 
@@ -124,9 +197,10 @@ export function warm(networkIds: Iterable<number>): void {
     const failure = failures.get(networkId)
     if (failure && now < failure.retryAt) continue
 
-    const task = refresh(networkId)
+    const task = refreshOnce(networkId)
       .then(() => {
         failures.delete(networkId)
+        warned = false
       })
       .catch((error: unknown) => {
         // Enrichment is optional by design; a failure just means sparser cards.

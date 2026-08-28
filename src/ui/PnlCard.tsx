@@ -15,8 +15,12 @@ import { balances } from '~/lib/session'
 
 /**
  * A floating card over the terminal showing the account balance and the profit since the
- * user last zeroed it, side by side. Dragged from anywhere on it, resized from its
- * bottom-right corner, both persisted (lib/pnlCard.ts).
+ * user last zeroed it, split evenly left and right. Dragged from anywhere on it, resized from
+ * its bottom-right corner, both persisted (lib/pnlCard.ts).
+ *
+ * The reset control is pinned to the top-right corner and the right column reserves its
+ * width, so the two halves stay an even 50/50 and no number ever runs under the button. Type
+ * and the glyph both scale with the card — see the .pnlcard rules in content/styles.css.
  *
  * One pointer handler on the card owns both gestures: the target decides which. That is why
  * the grip and the reset control carry no handlers of their own — a second set would fire on
@@ -166,18 +170,6 @@ export function PnlCard() {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      <div className="pnlcard-cell">
-        <span className="pnlcard-label">Balance</span>
-        <span className="pnlcard-value">{usdCompact(balanceUsd)}</span>
-      </div>
-
-      <div className="pnlcard-cell">
-        <span className="pnlcard-label">PnL</span>
-        <span className="pnlcard-value" data-tone={tone}>
-          {usdCompactDelta(pnl)}
-        </span>
-      </div>
-
       <button
         type="button"
         className="pnlcard-reset"
@@ -186,8 +178,21 @@ export function PnlCard() {
         disabled={balanceUsd === undefined}
         onClick={reset}
       >
-        <RotateCcw size={14} aria-hidden="true" />
+        {/* Sized by CSS, not by the prop — the glyph scales with the card like the type does. */}
+        <RotateCcw aria-hidden="true" />
       </button>
+
+      <div className="pnlcard-cell">
+        <span className="pnlcard-label">Balance</span>
+        <span className="pnlcard-value">{usdCompact(balanceUsd)}</span>
+      </div>
+
+      <div className="pnlcard-cell pnlcard-cell-right">
+        <span className="pnlcard-label">PnL</span>
+        <span className="pnlcard-value" data-tone={tone}>
+          {usdCompactDelta(pnl)}
+        </span>
+      </div>
 
       {/* Purely the corner affordance — the gesture belongs to the card's own handler. */}
       <div className="pnlcard-grip" aria-hidden="true" />

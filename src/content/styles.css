@@ -1364,9 +1364,16 @@
 }
 
 /* ----------------------------------------------------------------------------
- * PnL card — a floating readout over the columns: balance on the left, profit on
- * the right, a reset control and the resize corner. Dragged from anywhere on it,
- * so the whole surface is the handle and only the button opts out.
+ * PnL card — a floating readout over the columns: balance in the left half,
+ * profit in the right, the reset control pinned to the top-right corner and the
+ * resize grip to the bottom-right. Dragged from anywhere on it, so the whole
+ * surface is the handle and only the button opts out.
+ *
+ * Type scales with the card. The card is a size container, so the labels, the
+ * numbers and the reset glyph are all sized in cq units: min() takes whichever
+ * of width or height is the binding constraint, and clamp() keeps the result
+ * legible at the smallest size and sane at the largest. The width term is what
+ * stops a wide number outgrowing its half as the card shrinks.
  *
  * position: fixed rather than absolute: the host is `position: fixed; inset: 0`
  * with no transformed ancestor, so viewport coordinates ARE terminal
@@ -1377,7 +1384,9 @@
 .pnlcard {
   position: fixed;
   z-index: 80;
-  display: flex;
+  container-type: size;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
   gap: 0.625rem;
   padding: 0.5rem 0.625rem;
@@ -1390,27 +1399,38 @@
   cursor: grab;
   /* The drag is pointer-driven; without this a touch drag scrolls the page instead. */
   touch-action: none;
+  /* One source of truth for the corner control: its own size, and the space the right column
+     keeps clear for it. */
+  --pnlcard-control: clamp(1.125rem, min(9cqw, 30cqh), 2.25rem);
 }
 .pnlcard:active { cursor: grabbing; }
 
 .pnlcard-cell {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
 }
 
+/*
+ * The right half reserves the corner control's width so a long number can never run under
+ * it — that reservation, not a narrower column, is what keeps the split an even 50/50.
+ */
+.pnlcard-cell-right { padding-right: calc(var(--pnlcard-control) + 0.375rem); }
+
 .pnlcard-label {
-  font-size: 0.625rem;
+  font-size: clamp(0.5rem, min(4.2cqw, 14cqh), 1rem);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fobo-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pnlcard-value {
-  font-size: 0.9375rem;
+  font-size: clamp(0.6875rem, min(6.5cqw, 22cqh), 2.25rem);
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -1421,12 +1441,14 @@
 .pnlcard-value[data-tone='down'] { color: var(--fobo-red); }
 
 .pnlcard-reset {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 1.375rem;
-  height: 1.375rem;
+  width: var(--pnlcard-control);
+  height: var(--pnlcard-control);
   padding: 0;
   border: 1px solid var(--fobo-border-soft);
   border-radius: 0.375rem;
@@ -1440,6 +1462,8 @@
   color: var(--fobo-text);
 }
 .pnlcard-reset:disabled { opacity: 0.4; cursor: default; }
+/* lucide writes its own width/height attributes; the glyph follows the button instead. */
+.pnlcard-reset svg { width: 62%; height: 62%; }
 
 .pnlcard-grip {
   position: absolute;
