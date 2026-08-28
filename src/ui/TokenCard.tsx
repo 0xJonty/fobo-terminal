@@ -3,7 +3,9 @@ import { ChefHat, Droplet, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
 import { ChainIcon } from '~/ui/ChainIcon'
 import { Metric, riskClass } from '~/ui/Metric'
+import { canQuickBuy, QuickBuy } from '~/ui/QuickBuy'
 import { age, count, percent, share, usd } from '~/lib/format'
+import { useDisplaySettings } from '~/lib/displayPrefs'
 import { tokenPath } from '~/lib/url'
 import type { Token } from '~/types/token'
 
@@ -11,8 +13,10 @@ import type { Token } from '~/types/token'
  * One row. Dense lines beside an avatar, following Axiom Pulse's anatomy but rendered
  * entirely in fomo's design tokens.
  *
- * Read-only by design: the whole row is a link into fomo's own coin page. There is no buy
- * control, and nothing here reads wallet state.
+ * Every data point on the row can be switched off in Display settings (see lib/displayPrefs.ts);
+ * a field switched ON still renders nothing when the row does not carry it. The one control
+ * here is quick buy, which is the only part of the card that is not read-only — it appears on
+ * Solana rows when the user has it on (see ui/QuickBuy.tsx). Nothing else reads wallet state.
  */
 
 /**
@@ -76,10 +80,28 @@ export const TokenCard = memo(function TokenCard({
   showBond: boolean
   onOpen: (token: Token) => void
 }) {
+  // Read straight from the shared store rather than through Column and the side panel — the
+  // value is the same for every card on screen (see lib/displayPrefs.ts).
+  const display = useDisplaySettings()
   const href = tokenPath(token.chain, token.address)
   // fomo reports change as a fraction; the formatter wants a percentage.
   const change24 = token.change24h === undefined ? undefined : token.change24h * 100
   const m = token.metrics
+  const show = display.fields
+
+  // Lines are only drawn when something on them survives the user's switches — an empty flex
+  // row still costs its gap, and three of those turn a trimmed card into a stack of blanks.
+  const line2 =
+    show.age ||
+    (show.holders && m?.holdersCount !== undefined) ||
+    (show.top10 && m?.top10Holdings !== undefined) ||
+    (show.dev && m?.devHoldings !== undefined) ||
+    show.volume
+  const line3 =
+    (show.liquidity && token.liquidity !== undefined) ||
+    (show.change24h && change24 !== undefined) ||
+    (show.trades && m?.trades1h !== undefined) ||
+    show.pressure
 
   return (
     <a
@@ -100,77 +122,109 @@ export const TokenCard = memo(function TokenCard({
       <span className="rowlines">
         {/* 1 — identity, market cap, volume */}
         <span className="line">
-          <ChainIcon networkId={token.networkId} size={12} className="symbol-chain" />
+          {show.chainIcon && (
+            <ChainIcon networkId={token.networkId} size={12} className="symbol-chain" />
+          )}
           <span className="symbol">{token.symbol || token.name || '—'}</span>
-          <span className="name">{token.name}</span>
-          <span className="line-end">
-            <span className="stat">{usd(token.marketCap)}</span>
-            <span className="stat-label">MC</span>
-          </span>
+          {show.name && <span className="name">{token.name}</span>}
+          {show.marketCap && (
+            <span className="line-end">
+              <span className="stat">{usd(token.marketCap)}</span>
+              <span className="stat-label">MC</span>
+            </span>
+          )}
         </span>
 
         {/* 2 — age and the wallet-cohort counts */}
-        <span className="line">
-          <span className="metric muted" title="Age">
-            {age(token.createdAt)}
+        {line2 && (
+          <span className="line">
+            {show.age && (
+              <span className="metric muted" title="Age">
+                {age(token.createdAt)}
+              </span>
+            )}
+            {show.holders && m?.holdersCount !== undefined && (
+              <Metric icon={Users} value={count(m.holdersCount)} title="Holders" />
+            )}
+            {show.top10 && m?.top10Holdings !== undefined && (
+              <Metric
+                icon={UserStar}
+                value={share(m.top10Holdings)}
+                title="Top 10 holders' share of supply"
+                tone={riskClass(m.top10Holdings)}
+              />
+            )}
+            {show.dev && m?.devHoldings !== undefined && (
+              <Metric
+                icon={ChefHat}
+                value={share(m.devHoldings)}
+                title="Dev wallet holdings"
+                tone={m.devHoldings >= 5 ? riskClass(m.devHoldings) : 'dev'}
+              />
+            )}
+            {show.volume && (
+              <span className="line-end">
+                {/*
+                  * The label has to name the window the number actually came from. This used to read
+                  * `volume24 ?? volume1h` under a fixed "VOL" heading, so a token with no 24h figure
+                  * showed its 1h volume captioned as a 24h one.
+                  */}
+                <span className="stat-label">{token.volume24 !== undefined ? 'VOL' : 'VOL 1H'}</span>
+                <span className="stat">{usd(token.volume24 ?? m?.volume1h)}</span>
+              </span>
+            )}
           </span>
-          {m?.holdersCount !== undefined && (
-            <Metric icon={Users} value={count(m.holdersCount)} title="Holders" />
-          )}
-          {m?.top10Holdings !== undefined && (
-            <Metric
-              icon={UserStar}
-              value={share(m.top10Holdings)}
-              title="Top 10 holders' share of supply"
-              tone={riskClass(m.top10Holdings)}
-            />
-          )}
-          {m?.devHoldings !== undefined && (
-            <Metric
-              icon={ChefHat}
-              value={share(m.devHoldings)}
-              title="Dev wallet holdings"
-              tone={m.devHoldings >= 5 ? riskClass(m.devHoldings) : 'dev'}
-            />
-          )}
-          <span className="line-end">
-            {/*
-              * The label has to name the window the number actually came from. This used to read
-              * `volume24 ?? volume1h` under a fixed "VOL" heading, so a token with no 24h figure
-              * showed its 1h volume captioned as a 24h one.
-              */}
-            <span className="stat-label">{token.volume24 !== undefined ? 'VOL' : 'VOL 1H'}</span>
-            <span className="stat">{usd(token.volume24 ?? m?.volume1h)}</span>
-          </span>
-        </span>
+        )}
 
         {/* 3 — liquidity, price direction, trade pressure */}
-        <span className="line">
-          {token.liquidity !== undefined && (
-            <Metric icon={Droplet} value={usd(token.liquidity)} title="Liquidity" />
-          )}
-          {change24 !== undefined && (
-            <span className={change24 >= 0 ? 'metric pos' : 'metric neg'} title="24h change">
-              {percent(change24)}
+        {line3 && (
+          <span className="line">
+            {show.liquidity && token.liquidity !== undefined && (
+              <Metric icon={Droplet} value={usd(token.liquidity)} title="Liquidity" />
+            )}
+            {show.change24h && change24 !== undefined && (
+              <span className={change24 >= 0 ? 'metric pos' : 'metric neg'} title="24h change">
+                {percent(change24)}
+              </span>
+            )}
+            <span className="line-end">
+              {show.trades && m?.trades1h !== undefined && (
+                <span className="metric">{count(m.trades1h)} tx</span>
+              )}
+              {show.pressure && <Pressure buys={m?.buys1h} sells={m?.sells1h} />}
             </span>
-          )}
-          <span className="line-end">
-            {m?.trades1h !== undefined && <span className="metric">{count(m.trades1h)} tx</span>}
-            <Pressure buys={m?.buys1h} sells={m?.sells1h} />
           </span>
-        </span>
+        )}
 
         {/*
           * 4 — bonding progress, pre-graduated only. Sniper/insider/bundler cohorts used to sit
           * here, joined in from Mobula's pulse feed; fomo itself exposes none of them and the
           * joined numbers did not hold up, so they are gone. A blank beats a guess.
           */}
-        {showBond && token.graduationPercent !== undefined && (
+        {show.bondBar && showBond && token.graduationPercent !== undefined && (
           <span className="line">
             <BondBar percent={token.graduationPercent} />
           </span>
         )}
       </span>
+
+      {/*
+        * The button sits INSIDE the row's anchor, which nests interactive content. The
+        * alternative — lifting it out and absolutely positioning it over the row — would cost
+        * the anchor's keyboard focus and middle-click-to-new-tab, both of which the row relies
+        * on. The button suppresses the anchor instead: it stops the pointer and the click, so a
+        * buy never navigates (see ui/QuickBuy.tsx).
+        */}
+      {show.quickBuy && canQuickBuy(token) && (
+        <span className="qbuy-slot">
+          <QuickBuy
+            token={token}
+            size={display.quickBuySize}
+            amountUsd={display.quickBuyAmountUsd}
+            confirm={display.quickBuyConfirm}
+          />
+        </span>
+      )}
     </a>
   )
 })

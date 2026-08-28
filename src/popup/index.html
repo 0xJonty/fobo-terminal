@@ -80,6 +80,23 @@
       .segment button[aria-pressed='true'] { background: #516af6; color: #fff; }
       .segment button:focus-visible { outline: 2px solid #516af6; outline-offset: 1px; }
 
+      /* Opens something elsewhere rather than setting a value here, so it reads as an action. */
+      .action {
+        border: 1px solid rgb(203 208 235 / 0.1);
+        background: #1c1b26;
+        color: #f7f7f7;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .action:hover { background: #232231; }
+      .action:focus-visible { outline: 2px solid #516af6; outline-offset: 1px; }
+      .action[disabled] { opacity: 0.45; cursor: default; }
+      .note { margin: 8px 0 0; font-size: 10px; color: #9899a3; min-height: 12px; }
     </style>
   </head>
   <body>
@@ -137,6 +154,17 @@
           <span class="slider"></span>
         </label>
       </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div>
+          <p class="label">Display settings</p>
+          <p class="hint">What each token card shows, and quick buy</p>
+        </div>
+        <button id="display-settings" class="action" type="button">Open</button>
+      </div>
+      <p id="display-note" class="note"></p>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

@@ -11,6 +11,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { App } from '~/content/App'
 import styles from '~/content/styles.css?inline'
 import { withTimeout } from '~/lib/async'
+import { requestDisplaySettings } from '~/lib/displayPrefs'
 import { HIDDEN_EVENT, HOST_ID, LAUNCHER_ID, SHOWN_EVENT } from '~/lib/host'
 import { sameOriginHref } from '~/lib/url'
 
@@ -803,8 +804,21 @@ document.addEventListener('keydown', (event) => {
 
 try {
   chrome.runtime.onMessage.addListener((message: { type?: string; enabled?: boolean }, sender) => {
-    // Only this extension's own contexts (the service worker relay) may drive the toggle.
+    // Only this extension's own contexts (the service worker relay, the toolbar popup) may
+    // drive the toggle or open the dialog.
     if (sender.id !== chrome.runtime.id) return
+
+    // "Display settings" in the popup. The dialog lives inside the terminal, so asking for it
+    // is also an explicit summon — the same treatment the toolbar toggle gets. The request is
+    // latched, so it survives the app not existing yet (see lib/displayPrefs.ts).
+    if (message?.type === 'fobo:open-display-settings') {
+      setDismissed(false)
+      markTerminal(window.location.pathname)
+      requestDisplaySettings()
+      void sync()
+      return
+    }
+
     if (message?.type !== 'fobo:enabled-changed') return
     if (message.enabled) {
       // A toolbar toggle back on is an explicit summon, same as the launcher.

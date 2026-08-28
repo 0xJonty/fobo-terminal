@@ -11,7 +11,7 @@ Bonding, Graduated and Trending side by side — live, dense, and in fomo's own 
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-516af6.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/chrome-Manifest%20V3-516af6.svg)](manifest.config.ts)
-[![Read-only](https://img.shields.io/badge/wallet-read--only-516af6.svg)](#scope-limits)
+[![No keys](https://img.shields.io/badge/wallet-no%20keys%20held-516af6.svg)](#scope-limits)
 
 <img src="store/screenshot-5-1280x800.png" alt="fobo terminal — three live token columns over fomo.family" width="820">
 
@@ -92,6 +92,38 @@ watchlist as a drag-scrollable ticker (newest-starred first, capped at 15, marke
 shown as MC, otherwise price — fomo's own display rule), and on the right the status dot
 (`status.fomo.family`), Privacy/Terms/Help, and the X/Discord icons. Prices refresh every minute
 and status every five, matching fomo's intervals.
+
+## Quick buy
+
+A buy button on the card itself, for a fixed amount you set once — the Axiom/GMGN gesture,
+against fomo's own trade rail rather than a wallet of fobo's.
+
+Every step is fomo's. Clicking sends its own swap call (`POST /swaps/v2`, the single call site
+its trade panel uses), and its server builds the transaction, prices it, applies its own fee
+tier and simulates it before returning anything. What comes back is already signed by fomo as
+fee payer; the one missing piece is the account holder's signature, and the wallet that provides
+it is the Privy embedded wallet fomo has already loaded into the page. fobo holds no key, sets
+no price and takes no cut.
+
+- **Funded from cash** — the same Solana USDC row the top bar calls cash. fomo's own floor is
+  $2 per swap; a swap it will not build is reported back verbatim on the button.
+- **Solana only.** fomo routes EVM buys through a cross-chain relay wanting an EVM signature, so
+  the button does not appear on those rows rather than appearing and always failing.
+- **Confirms by default.** The first click arms, the second spends. Rows move under the cursor,
+  so this is on until you turn it off in Display settings.
+- **It says "sent", not "filled."** The swap is submitted (Jito or its plain submit endpoint,
+  whichever fomo's quote asks for) and the transaction id is on the button's tooltip. Your
+  balances are what confirm it, and they refresh straight after.
+
+## Display settings
+
+**Display settings** in the toolbar popup opens a dialog over the terminal. Every data point a
+card can draw — chain icon, name, market cap, age, holders, top-10 share, dev holdings, volume,
+liquidity, 24h change, trade count, pressure bar, bonding bar, and the quick buy button — is a
+switch, and cards restyle as you flip them. Quick buy's button size (small / medium / large),
+amount per click and confirm step live in the same dialog. A field switched on still shows
+nothing when the row does not carry it: the switches choose what *may* be drawn, never invent a
+number.
 
 ## Everything else that's in there
 
@@ -176,15 +208,20 @@ behind Cloudflare bot management that rejects non-browser clients; a service-wor
 
 ## Scope limits
 
-- **Read-only.** Cash, portfolio value and open positions are *displayed* from fomo's own API
-  (the same endpoints fomo's header and positions list read); there are no keys, no signing and
-  no trade submission. Anything transactional (deposit, withdraw, buy) hands off to fomo's own
-  UI.
+- **No keys, ever.** Cash, portfolio value and open positions are *displayed* from fomo's own
+  API (the same endpoints fomo's header and positions list read). fobo holds no private key and
+  never sees one: the only transaction it can produce is a quick buy, which fomo's own server
+  builds, prices, fees and simulates, and which fomo's own wallet — already loaded in the page —
+  signs. Deposit, withdraw and account actions still hand off to fomo's UI.
+- **Quick buy** is off the same USDC cash rail fomo's trade panel spends, on Solana rows only,
+  for an amount you set in Display settings. It confirms by default. See [Quick buy](#quick-buy).
 - Profile pages and coin pages are left exactly as fomo ships them.
-- Nothing is injected into fomo's JavaScript context. fobo renders into a **closed** shadow root
-  on a sibling element and opens its own API connection, so it never patches `fetch`,
-  `WebSocket`, or React's DOM — and fomo's scripts cannot reach into the terminal's DOM either.
-  Disabling the extension leaves the site untouched.
+- The terminal is rendered into a **closed** shadow root on a sibling element and opens its own
+  API connection, so it never patches `fetch`, `WebSocket`, or React's DOM — and fomo's scripts
+  cannot reach into the terminal's DOM either. Disabling the extension leaves the site
+  untouched. The single exception is quick buy: for the duration of one click it runs one
+  self-contained function in fomo's own JavaScript world to ask that wallet for a signature, and
+  nothing of fobo's stays behind when it returns.
 - The Privy JWT is read from the page's own `localStorage` at connect time, sent only to fomo's
   own API, and is never persisted by the extension or logged.
 - **Third parties.** Besides fomo's API, the extension talks to two other hosts from your

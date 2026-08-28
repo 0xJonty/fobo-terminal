@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BottomBar } from '~/ui/BottomBar'
 import { Column } from '~/ui/Column'
+import { DisplaySettings as DisplaySettingsDialog } from '~/ui/DisplaySettings'
 import { HoldingsBar } from '~/ui/HoldingsBar'
 import { PnlCard } from '~/ui/PnlCard'
 import { SidePanel } from '~/ui/SidePanel'
@@ -25,6 +26,12 @@ import {
   type ColumnPrefs,
 } from '~/lib/columnPrefs'
 import { backfillFor, mergeToken, warmBackfill } from '~/lib/backfill'
+import {
+  DISPLAY_SETTINGS_EVENT,
+  displayStore,
+  takeDisplaySettingsRequest,
+  useDisplaySettings,
+} from '~/lib/displayPrefs'
 import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { setDiag } from '~/lib/host'
@@ -145,6 +152,23 @@ export function App({
   useEffect(() => {
     void readPnlSettings().then((stored) => setPnlEnabled(stored.enabled))
     return watchPnlSettings((stored) => setPnlEnabled(stored.enabled))
+  }, [])
+
+  /* ---- Display settings: the cards read the store; this owns only the dialog ---- */
+
+  // Opened from the toolbar popup. The request can arrive before this app exists — the popup
+  // summons a hidden terminal on its way — so a latched request is claimed on mount as well as
+  // through the event (see lib/displayPrefs.ts).
+  const displaySettings = useDisplaySettings()
+  const [displayOpen, setDisplayOpen] = useState(false)
+  useEffect(() => {
+    const open = () => {
+      takeDisplaySettingsRequest()
+      setDisplayOpen(true)
+    }
+    if (takeDisplaySettingsRequest()) setDisplayOpen(true)
+    window.addEventListener(DISPLAY_SETTINGS_EVENT, open)
+    return () => window.removeEventListener(DISPLAY_SETTINGS_EVENT, open)
   }, [])
 
   /* ---- FOMO Panel: settings, view, backfill, live feeds ---- */
@@ -652,6 +676,14 @@ export function App({
 
       {/* Floats over everything above; last in the DOM so it also paints last. */}
       {pnlEnabled && <PnlCard />}
+
+      {displayOpen && (
+        <DisplaySettingsDialog
+          settings={displaySettings}
+          onChange={displayStore.set}
+          onClose={() => setDisplayOpen(false)}
+        />
+      )}
     </div>
   )
 }

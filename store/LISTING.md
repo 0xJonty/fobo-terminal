@@ -51,17 +51,21 @@ site itself offers. The top bar shows your cash and portfolio value using its ow
 the holdings strip shows your open positions, and the bottom bar mirrors the ticker and
 status dot.
 
-Everything is read-only. Clicking a card, alert or trader opens it on the site. Deposit,
-withdraw and account actions hand off to its own dialogs. There is no wallet access, no
-signing and no trade submission.
+A quick buy button on each Solana card spends a fixed amount of your cash, for an amount you
+set yourself, and asks the wallet the site has already loaded to approve it — the extension
+holds no key and never sees one. The site's own server builds, prices and fees every swap.
+Everything else is read-only: clicking a card, alert or trader opens it there, and deposit,
+withdraw and account actions hand off to its own dialogs.
 
 How it works
 • Runs only on fomo.family pages, using the session you are already logged into.
 • Reads the site's own API and websocket — the same data its pages show, nothing invented.
 • Holder metrics come from Mobula's public Pulse endpoint; every other number comes from
   the site itself.
-• Preferences (panel side and width, alert sound, column filters) are saved to your Chrome
-  profile.
+• Preferences (panel side and width, alert sound, column filters, and which data points each
+  card shows) are saved to your Chrome profile.
+• Quick buy asks the wallet already loaded on the page to approve one transaction per click.
+  No key is held, read or stored, and the amount is yours to set — it confirms by default.
 • The toolbar icon toggles the terminal, Esc dismisses it, and a small button restores it.
 
 Not affiliated with, endorsed by or maintained by fomo.family. Uses its public web API under
@@ -99,11 +103,18 @@ your own account; if that API changes, features may degrade until updated.
 ## Privacy practices tab
 
 **Single purpose description**:
-`Adds a live token-list home screen (Bonding / Graduated / Trending, alerts, watchlist, feed) to fomo.family pages, using the session the user is already logged into.`
+`Adds a live token-list home screen (Bonding / Graduated / Trending, alerts, watchlist, feed) to fomo.family pages, with a per-card quick buy that places an order through that site's own trade API, using the session the user is already logged into.`
 
 **Permission justifications**:
 - `storage`: "Saves the user's preferences: terminal on/off, panel side and width, alert
-  sound, and per-column filter/sort settings."
+  sound, per-column filter/sort settings, which data points each token card shows, and the
+  quick buy amount and button size."
+- `scripting`: "Quick buy only. The site builds and signs the swap on its server; the user's own
+  signature has to come from the wallet the site has already loaded into its page, which a
+  content script in an isolated world cannot reach. On each click the extension injects one
+  self-contained function into that page to request that signature, and the result is returned
+  directly to the extension. Nothing is left in the page between clicks, no key is read or
+  stored, and injection is limited to the fomo.family frame that asked for it."
 - Host permission `https://fomo.family/*`: "This is the only site the extension works on.
   The content script renders the terminal on its pages, and the background worker uses this
   host permission to notify those open tabs when the toolbar toggle changes. No other site
@@ -118,7 +129,10 @@ your own account; if that API changes, features may degrade until updated.
 - ☑ **Personally identifiable information** — "Displays the user's own profile (handle,
   display name, avatar) fetched from the same API. Not stored or transmitted elsewhere."
 - ☑ **Financial and payment information** — "Displays the user's own balances and open
-  positions fetched from the same API. Not stored or transmitted elsewhere."
+  positions fetched from the same API. On an explicit click, also asks that API to build a swap
+  and submits it once the wallet already loaded on the page has signed it. No key, balance or
+  transaction is stored by the extension or sent anywhere other than that site's own API and
+  the transaction relay its own client uses."
 - ☐ Health, ☐ Location, ☐ Web history, ☐ User activity, ☐ Website content — leave unchecked
   (public token data is read from that API, not scraped from pages).
 - Certify all three statements: not sold to third parties; not used for purposes unrelated
@@ -148,6 +162,13 @@ account there, the page shows the site's marketing content and the extension sta
 inactive by design. To review: sign in, then open https://fomo.family/ — the terminal
 mounts over the landing page. Esc dismisses it, the "fobo" button (bottom right) restores
 it, and the toolbar popup turns it off entirely.
+
+The quick buy button on each Solana card cannot be exercised on an unfunded account: the
+site rejects any swap under $2 and the button reports that back instead of trading. It is
+also not silent — it arms on the first click and only spends on a second. Nothing about
+it is hidden behind that: the button issues the site's own swap request, and the injected
+function that requests a signature is the whole of what runs in the page (see the
+`scripting` justification). To see it without funds, deposit $5 of USDC on the site.
 ```
 
 ## After submission

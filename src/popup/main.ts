@@ -90,5 +90,51 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // savePnlEnabled is itself read-modify-write, so a drag the terminal has in flight survives.
 pnlToggle.addEventListener('change', () => void savePnlEnabled(pnlToggle.checked))
 
+/* ---- Display settings ---- */
+
+/**
+ * The dialog itself lives in the terminal, on the page, because that is where the cards it
+ * configures are — this only asks for it. The active tab wins when it is already on fomo;
+ * otherwise the first open fomo tab does, and it is focused so the dialog is not opened out of
+ * sight. With no fomo tab at all there is nothing to configure, and the popup says so rather
+ * than opening one uninvited.
+ */
+
+const displayButton = document.getElementById('display-settings') as HTMLButtonElement
+const displayNote = document.getElementById('display-note') as HTMLParagraphElement
+
+const FOMO_TABS = 'https://fomo.family/*'
+
+async function openDisplaySettings(): Promise<void> {
+  displayNote.textContent = ''
+  const [active] = await chrome.tabs.query({ active: true, currentWindow: true, url: FOMO_TABS })
+  const target = active ?? (await chrome.tabs.query({ url: FOMO_TABS }))[0]
+  if (!target?.id) {
+    displayNote.textContent = 'Open fomo.family in a tab first.'
+    return
+  }
+
+  try {
+    await chrome.tabs.sendMessage(target.id, { type: 'fobo:open-display-settings' })
+  } catch {
+    // A tab that has not run the content script yet (still loading, or discarded).
+    displayNote.textContent = 'That tab is still loading — try again.'
+    return
+  }
+
+  if (target.id !== active?.id) {
+    await chrome.tabs.update(target.id, { active: true })
+    if (target.windowId !== undefined) await chrome.windows.update(target.windowId, { focused: true })
+  }
+  window.close()
+}
+
+displayButton.addEventListener('click', () => {
+  displayButton.disabled = true
+  void openDisplaySettings().finally(() => {
+    displayButton.disabled = false
+  })
+})
+
 // Module scope, not script scope — keeps this file's names out of the global namespace.
 export {}
