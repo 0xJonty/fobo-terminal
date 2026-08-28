@@ -13,6 +13,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { debounce, withTimeout } from '~/lib/async'
+import { LIST_KEYS, type ListKey } from '~/lib/protocol'
 import { SWAP_MIN_USD } from '~/lib/swap'
 
 export const DISPLAY_KEY = 'fobo:display'
@@ -62,7 +63,7 @@ export const CARD_FIELD_LABEL: Readonly<Record<CardField, string>> = {
 
 export const CARD_FIELD_HINT: Readonly<Partial<Record<CardField, string>>> = {
   bondBar: 'Bonding column only',
-  quickBuy: 'Solana tokens only',
+  quickBuy: 'Amount per column, beside its filter',
 }
 
 export type QuickBuySize = 'small' | 'medium' | 'large'
@@ -81,8 +82,17 @@ export const QUICK_BUY_MAX_USD = 10_000
 export interface DisplaySettings {
   fields: Record<CardField, boolean>
   quickBuySize: QuickBuySize
-  /** USD of cash spent per click. Never below fomo's own minimum swap value. */
+  /**
+   * The default USD of cash spent per click, used by any column without its own amount and by
+   * the watchlist's cards. Never below fomo's own minimum swap value.
+   */
   quickBuyAmountUsd: number
+  /**
+   * Per-column overrides, set from the box beside each column's filter button. Sizing differs
+   * by column in practice — small on Bonding, larger on Trending — which is the whole reason
+   * the box is per column rather than one figure in this dialog.
+   */
+  quickBuyAmountByList: Partial<Record<ListKey, number>>
   /**
    * Whether a click arms the button and a second one spends. On by default: this is real
    * money on a row that moves under the cursor, and the columns are dense.
@@ -98,7 +108,21 @@ export const DISPLAY_DEFAULT: DisplaySettings = {
   fields: allFields(true),
   quickBuySize: 'medium',
   quickBuyAmountUsd: 10,
+  quickBuyAmountByList: {},
   quickBuyConfirm: true,
+}
+
+/** Clamp one amount the way both the dialog and the per-column boxes must. */
+export function clampAmount(value: number): number {
+  // Two decimals: the amount is dollars of USDC, and a stored 10.005 must not round-trip into
+  // a base-unit amount the server reads differently from the label on the button.
+  return Math.round(clamp(value, SWAP_MIN_USD, QUICK_BUY_MAX_USD) * 100) / 100
+}
+
+/** What a card in `list` actually spends: that column's override, else the default. */
+export function amountForList(settings: DisplaySettings, list?: ListKey): number {
+  if (list === undefined) return settings.quickBuyAmountUsd
+  return settings.quickBuyAmountByList[list] ?? settings.quickBuyAmountUsd
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -120,14 +144,26 @@ export function sanitizeDisplaySettings(raw: unknown): DisplaySettings {
       ? row.quickBuyAmountUsd
       : DISPLAY_DEFAULT.quickBuyAmountUsd
 
+  const storedByList = (
+    typeof row.quickBuyAmountByList === 'object' && row.quickBuyAmountByList !== null
+      ? row.quickBuyAmountByList
+      : {}
+  ) as Record<string, unknown>
+  const quickBuyAmountByList: Partial<Record<ListKey, number>> = {}
+  for (const list of LIST_KEYS) {
+    const value = storedByList[list]
+    // An override is only kept when it is a real number; anything else falls back to the
+    // default rather than pinning a column to a nonsense amount.
+    if (typeof value === 'number' && Number.isFinite(value)) quickBuyAmountByList[list] = clampAmount(value)
+  }
+
   return {
     fields,
     quickBuySize: QUICK_BUY_SIZES.includes(row.quickBuySize as QuickBuySize)
       ? (row.quickBuySize as QuickBuySize)
       : DISPLAY_DEFAULT.quickBuySize,
-    // Two decimals: the amount is dollars of USDC, and a stored 10.005 must not round-trip
-    // into a base-unit amount the server reads differently from the label on the button.
-    quickBuyAmountUsd: Math.round(clamp(amount, SWAP_MIN_USD, QUICK_BUY_MAX_USD) * 100) / 100,
+    quickBuyAmountUsd: clampAmount(amount),
+    quickBuyAmountByList,
     quickBuyConfirm: row.quickBuyConfirm !== false,
   }
 }

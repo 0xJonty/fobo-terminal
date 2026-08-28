@@ -3,9 +3,11 @@ import { ChefHat, Droplet, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
 import { ChainIcon } from '~/ui/ChainIcon'
 import { Metric, riskClass } from '~/ui/Metric'
-import { canQuickBuy, QuickBuy } from '~/ui/QuickBuy'
+import { QuickBuy } from '~/ui/QuickBuy'
 import { age, count, percent, share, usd } from '~/lib/format'
-import { useDisplaySettings } from '~/lib/displayPrefs'
+import { amountForList, useDisplaySettings } from '~/lib/displayPrefs'
+import type { ListKey } from '~/lib/protocol'
+import { canQuickBuy } from '~/lib/swap'
 import { tokenPath } from '~/lib/url'
 import type { Token } from '~/types/token'
 
@@ -15,8 +17,8 @@ import type { Token } from '~/types/token'
  *
  * Every data point on the row can be switched off in Display settings (see lib/displayPrefs.ts);
  * a field switched ON still renders nothing when the row does not carry it. The one control
- * here is quick buy, which is the only part of the card that is not read-only — it appears on
- * Solana rows when the user has it on (see ui/QuickBuy.tsx). Nothing else reads wallet state.
+ * here is quick buy, the only part of the card that is not read-only — it spends that column's
+ * own amount (see ui/QuickBuy.tsx). Nothing else reads wallet state.
  */
 
 /**
@@ -73,11 +75,15 @@ export const TokenCard = memo(function TokenCard({
   token,
   fresh,
   showBond,
+  list,
   onOpen,
 }: {
   token: Token
   fresh: boolean
   showBond: boolean
+  /** Which column this row sits in, so quick buy can use that column's own amount. Absent in
+   * the watchlist, whose cards spend the default. */
+  list?: ListKey
   onOpen: (token: Token) => void
 }) {
   // Read straight from the shared store rather than through Column and the side panel — the
@@ -220,7 +226,7 @@ export const TokenCard = memo(function TokenCard({
           <QuickBuy
             token={token}
             size={display.quickBuySize}
-            amountUsd={display.quickBuyAmountUsd}
+            amountUsd={amountForList(display, list)}
             confirm={display.quickBuyConfirm}
           />
         </span>

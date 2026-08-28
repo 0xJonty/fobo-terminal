@@ -51,11 +51,11 @@ site itself offers. The top bar shows your cash and portfolio value using its ow
 the holdings strip shows your open positions, and the bottom bar mirrors the ticker and
 status dot.
 
-A quick buy button on each Solana card spends a fixed amount of your cash, for an amount you
-set yourself, and asks the wallet the site has already loaded to approve it — the extension
-holds no key and never sees one. The site's own server builds, prices and fees every swap.
-Everything else is read-only: clicking a card, alert or trader opens it there, and deposit,
-withdraw and account actions hand off to its own dialogs.
+A quick buy button on each card spends an amount you set per column, and asks the wallet the
+site has already loaded to approve it — the extension holds no key and never sees one. The
+site's own server builds, prices and fees every swap, and the button waits for the chain to
+confirm before it says filled. Everything else is read-only: clicking a card, alert or trader
+opens it there, and deposit, withdraw and account actions hand off to its own dialogs.
 
 How it works
 • Runs only on fomo.family pages, using the session you are already logged into.
@@ -65,7 +65,8 @@ How it works
 • Preferences (panel side and width, alert sound, column filters, and which data points each
   card shows) are saved to your Chrome profile.
 • Quick buy asks the wallet already loaded on the page to approve one transaction per click.
-  No key is held, read or stored, and the amount is yours to set — it confirms by default.
+  No key is held, read or stored, and the amount is yours to set per column — it confirms by
+  default, and reports the outcome rather than assuming it.
 • The toolbar icon toggles the terminal, Esc dismisses it, and a small button restores it.
 
 Not affiliated with, endorsed by or maintained by fomo.family. Uses its public web API under
@@ -108,7 +109,7 @@ your own account; if that API changes, features may degrade until updated.
 **Permission justifications**:
 - `storage`: "Saves the user's preferences: terminal on/off, panel side and width, alert
   sound, per-column filter/sort settings, which data points each token card shows, and the
-  quick buy amount and button size."
+  quick buy amounts (a default plus any per-column ones), button size and confirm setting."
 - `scripting`: "Quick buy only. The site builds and signs the swap on its server; the user's own
   signature has to come from the wallet the site has already loaded into its page, which a
   content script in an isolated world cannot reach. On each click the extension injects one
@@ -130,9 +131,10 @@ your own account; if that API changes, features may degrade until updated.
   display name, avatar) fetched from the same API. Not stored or transmitted elsewhere."
 - ☑ **Financial and payment information** — "Displays the user's own balances and open
   positions fetched from the same API. On an explicit click, also asks that API to build a swap
-  and submits it once the wallet already loaded on the page has signed it. No key, balance or
-  transaction is stored by the extension or sent anywhere other than that site's own API and
-  the transaction relay its own client uses."
+  and submits it once the wallet already loaded on the page has signed it, then reads back
+  whether it succeeded. No key, balance or transaction is stored by the extension or sent
+  anywhere other than that site's own API and the submission and status endpoints its own
+  client uses."
 - ☐ Health, ☐ Location, ☐ Web history, ☐ User activity, ☐ Website content — leave unchecked
   (public token data is read from that API, not scraped from pages).
 - Certify all three statements: not sold to third parties; not used for purposes unrelated
@@ -163,8 +165,8 @@ inactive by design. To review: sign in, then open https://fomo.family/ — the t
 mounts over the landing page. Esc dismisses it, the "fobo" button (bottom right) restores
 it, and the toolbar popup turns it off entirely.
 
-The quick buy button on each Solana card cannot be exercised on an unfunded account: the
-site rejects any swap under $2 and the button reports that back instead of trading. It is
+The quick buy button on each card cannot be exercised on an unfunded account: the site
+rejects any swap under $2 and the button reports that back instead of trading. It is
 also not silent — it arms on the first click and only spends on a second. Nothing about
 it is hidden behind that: the button issues the site's own swap request, and the injected
 function that requests a signature is the whole of what runs in the page (see the

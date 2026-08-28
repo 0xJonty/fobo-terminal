@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  amountForList,
   CARD_FIELDS,
   DISPLAY_DEFAULT,
   QUICK_BUY_MAX_USD,
   sanitizeDisplaySettings,
 } from '~/lib/displayPrefs'
-import { SWAP_MIN_USD, usdToBaseUnits } from '~/lib/swap'
+import { SWAP_MIN_USD } from '~/lib/swap'
 
 describe('sanitizeDisplaySettings', () => {
   it('defaults everything on for an empty or broken payload', () => {
@@ -14,6 +15,7 @@ describe('sanitizeDisplaySettings', () => {
       for (const field of CARD_FIELDS) expect(settings.fields[field]).toBe(true)
       expect(settings.quickBuySize).toBe(DISPLAY_DEFAULT.quickBuySize)
       expect(settings.quickBuyAmountUsd).toBe(DISPLAY_DEFAULT.quickBuyAmountUsd)
+      expect(settings.quickBuyAmountByList).toEqual({})
       expect(settings.quickBuyConfirm).toBe(true)
     }
   })
@@ -37,9 +39,7 @@ describe('sanitizeDisplaySettings', () => {
   })
 
   it('rounds the amount to cents so the label and the sent amount agree', () => {
-    const settings = sanitizeDisplaySettings({ quickBuyAmountUsd: 12.3456 })
-    expect(settings.quickBuyAmountUsd).toBe(12.35)
-    expect(usdToBaseUnits(settings.quickBuyAmountUsd)).toBe('12350000')
+    expect(sanitizeDisplaySettings({ quickBuyAmountUsd: 12.3456 }).quickBuyAmountUsd).toBe(12.35)
   })
 
   it('falls back on an unknown button size', () => {
@@ -48,12 +48,31 @@ describe('sanitizeDisplaySettings', () => {
   })
 })
 
-describe('usdToBaseUnits', () => {
-  it('converts dollars to USDC base units, rounding rather than truncating', () => {
-    expect(usdToBaseUnits(10)).toBe('10000000')
-    expect(usdToBaseUnits(2)).toBe('2000000')
-    // 0.1 * 1e6 lands at 100000.00000000001 in binary floating point.
-    expect(usdToBaseUnits(0.1)).toBe('100000')
-    expect(usdToBaseUnits(1.005)).toBe('1005000')
+describe('per-column amounts', () => {
+  it('keeps only real numbers, clamped like the default', () => {
+    const settings = sanitizeDisplaySettings({
+      quickBuyAmountByList: { 'pre-graduated': 5, graduated: 0, trending: 'lots', nonsense: 12 },
+    })
+    expect(settings.quickBuyAmountByList['pre-graduated']).toBe(5)
+    // Below fomo's floor, so clamped up rather than dropped.
+    expect(settings.quickBuyAmountByList.graduated).toBe(SWAP_MIN_USD)
+    // Not a number, and not a column — neither survives.
+    expect(settings.quickBuyAmountByList.trending).toBeUndefined()
+    expect(Object.keys(settings.quickBuyAmountByList)).toEqual(['pre-graduated', 'graduated'])
+    // And an override is clamped by the same ceiling as the default.
+    expect(
+      sanitizeDisplaySettings({ quickBuyAmountByList: { trending: 1e9 } }).quickBuyAmountByList.trending,
+    ).toBe(QUICK_BUY_MAX_USD)
+  })
+
+  it('falls back to the default for a column with no amount, and for the watchlist', () => {
+    const settings = sanitizeDisplaySettings({
+      quickBuyAmountUsd: 10,
+      quickBuyAmountByList: { trending: 50 },
+    })
+    expect(amountForList(settings, 'trending')).toBe(50)
+    expect(amountForList(settings, 'graduated')).toBe(10)
+    // No column at all — a watchlist card.
+    expect(amountForList(settings, undefined)).toBe(10)
   })
 })

@@ -130,8 +130,9 @@ export function DisplaySettings({
           <section className="dset-section">
             <div className="dset-section-label">Quick buy</div>
             <p className="dset-hint">
-              Spends the same USDC cash the site&apos;s own trade panel spends, on Solana rows.
-              Its server builds, prices and fees every swap.
+              Spends the same USDC cash the site&apos;s own trade panel spends. Its server builds,
+              prices and fees every swap; a token on another chain is delivered by Relay, and the
+              button waits for that too before it says filled.
             </p>
 
             <div className="dset-row">
@@ -152,8 +153,10 @@ export function DisplaySettings({
 
             <div className="dset-row">
               <span className="dset-row-label">
-                Amount per click
-                <span className="dset-row-hint">USD — minimum ${SWAP_MIN_USD}</span>
+                Default amount
+                <span className="dset-row-hint">
+                  USD, minimum ${SWAP_MIN_USD} — each column can override it beside its filter
+                </span>
               </span>
               <input
                 className="dset-input"

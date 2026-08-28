@@ -29,8 +29,8 @@ inside fomo.family's own page code is described under "Quick buy" below.
 
 - **Preferences only**, in Chrome's extension storage (`chrome.storage.sync`): whether the
   terminal is on, panel side and width, alert-sound on/off, your per-column filters and sort,
-  which data points each token card shows, and your quick buy amount, button size and confirm
-  setting. These sync with your Chrome profile if you have Chrome sync enabled. No account
+  which data points each token card shows, and your quick buy amounts (a default plus any
+  per-column ones), button size and confirm setting. These sync with your Chrome profile if you have Chrome sync enabled. No account
   data, tokens, keys or financial data are ever written to storage.
 - A few **tab-scoped flags** in the page's session storage (which page the terminal was
   summoned on, whether you dismissed it). These vanish when the tab closes.
@@ -47,6 +47,9 @@ inside fomo.family's own page code is described under "Quick buy" below.
   quick buy, and only to submit the signed transaction that fomo.family's own server built.
   These are the same submission endpoints fomo.family's own website uses. Nothing is sent to
   them except that transaction.
+- **Relay (`api.relay.link`)** — only after a quick buy of a token on a chain other than Solana,
+  and only to ask whether that purchase was filled. The request carries the swap's id and
+  nothing else. This is the same status endpoint fomo.family's own website polls.
 
 Nothing else. The extension contains no analytics, no telemetry, no advertising, and no
 remote code.
@@ -67,6 +70,10 @@ button on a card (twice, unless you switch the confirmation off). It works like 
   sign. The result comes straight back to the extension. Nothing is left behind in the page
   between clicks, and this happens on no other site.
 - The signed transaction is then submitted to the endpoints listed above.
+- Afterwards the extension asks whether the purchase succeeded: fomo.family's own Solana node
+  proxy (`solana-provider-1.prod-edge.fomo.family`, using the same session token) for the
+  transaction's status, and for a token on another chain, Relay for whether it was delivered.
+  This is a read; it changes nothing.
 
 No transaction, amount, address or signature is stored by the extension or sent to the
 developer.

@@ -11,7 +11,7 @@
  * goes to chrome.storage.
  */
 
-import { SIGN_MESSAGE_TYPE } from '~/lib/sign'
+import { SIGN_MESSAGE_TYPE, type SignRequest } from '~/lib/sign'
 
 const ENABLED_KEY = 'fobo:enabled'
 
@@ -44,27 +44,28 @@ chrome.storage.onChanged.addListener((changes, area) => {
  *
  * It must be entirely self-contained: Chrome serialises it with `Function.prototype.toString`
  * and evaluates the text in the page, so anything it closes over here (an import, a module
- * constant, a helper) would be undefined by the time it runs.
+ * constant, a helper) would be undefined by the time it runs. That is why the request shape is
+ * re-validated inline rather than shared with lib/sign.ts.
  *
- * Finding the wallet: Privy's embedded Solana wallet is React state, not a global. fomo puts
- * it on a context whose value is `{ fomoUser, solanaWallet, evmWallet, ... }`, so the fiber
- * tree is walked for a context value carrying a `solanaWallet` that can sign. The object found
- * is the same one fomo's own trade panel signs with — it exposes `signMessage`, and fomo runs
- * Privy in headless mode, so no wallet modal opens.
+ * Finding the wallet: Privy's embedded wallet is React state, not a global. fomo puts it on a
+ * context whose value is `{ fomoUser, solanaWallet, evmWallet, ... }`, so the fiber tree is
+ * walked for that value. The object found is the same one fomo's own trade panel signs with,
+ * and fomo runs Privy in headless mode, so no wallet modal opens. Only the Solana wallet is
+ * ever needed: a buy always spends the Solana cash rail, whatever chain the token is on.
  */
-function signInPageWorld(messageBase64: string): { address: string; signature: string } | { error: string } | Promise<{ address: string; signature: string } | { error: string }> {
-  const decode = (text: string): Uint8Array => {
-    const binary = atob(text)
-    const bytes = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-    return bytes
+function signInPageWorld(
+  request: SignRequest,
+): { address: string; signature: string } | { error: string } | Promise<{ address: string; signature: string } | { error: string }> {
+  interface Fiber {
+    return?: Fiber | null
+    child?: Fiber | null
+    sibling?: Fiber | null
+    memoizedProps?: { value?: unknown } | null
   }
-  const encode = (bytes: Uint8Array): string => {
-    let binary = ''
-    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]!)
-    return btoa(binary)
+  interface SolanaWallet {
+    address?: string
+    signMessage?: (input: { message: Uint8Array }) => Promise<{ signature?: Uint8Array } | Uint8Array>
   }
-
   let entry: unknown = null
   for (const element of document.querySelectorAll('div')) {
     const key = Object.keys(element).find(
@@ -77,61 +78,59 @@ function signInPageWorld(messageBase64: string): { address: string; signature: s
   }
   if (!entry) return { error: 'no-react' }
 
-  interface Fiber {
-    return?: Fiber | null
-    child?: Fiber | null
-    sibling?: Fiber | null
-    memoizedProps?: { value?: unknown } | null
-  }
   let root = entry as Fiber
   while (root.return) root = root.return
 
-  interface PageWallet {
-    address?: string
-    signMessage?: (input: { message: Uint8Array }) => Promise<{ signature?: Uint8Array } | Uint8Array>
-  }
-
   const seen = new Set<Fiber>()
   const stack: Fiber[] = [root]
-  let wallet: PageWallet | null = null
+  let context: { solanaWallet?: SolanaWallet } | null = null
   let visited = 0
-  while (stack.length > 0 && visited < 400000 && !wallet) {
+  while (stack.length > 0 && visited < 400000 && !context) {
     const current = stack.pop()
     if (!current || seen.has(current)) continue
     seen.add(current)
     visited += 1
     const value = current.memoizedProps?.value
     if (value && typeof value === 'object' && 'solanaWallet' in value) {
-      const candidate = (value as { solanaWallet?: PageWallet }).solanaWallet
-      if (candidate && typeof candidate.signMessage === 'function' && typeof candidate.address === 'string') {
-        wallet = candidate
-      }
+      context = value as { solanaWallet?: SolanaWallet }
     }
     if (current.child) stack.push(current.child)
     if (current.sibling) stack.push(current.sibling)
   }
-  if (!wallet) return { error: 'no-wallet' }
+  if (!context) return { error: 'no-wallet' }
 
-  // Both members were checked in the walk above; this narrows them for the call, and calling
-  // through the object keeps `this` bound to the wallet.
-  const found = wallet as Required<PageWallet>
-  const address = found.address
-  return found
-    .signMessage({ message: decode(messageBase64) })
+  const wallet = context.solanaWallet
+  if (!wallet || typeof wallet.signMessage !== 'function' || typeof wallet.address !== 'string') {
+    return { error: 'no-wallet' }
+  }
+
+  const binary = atob(request.message)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  const address = wallet.address
+
+  return wallet
+    .signMessage({ message: bytes })
     .then((result) => {
       const raw = result instanceof Uint8Array ? result : result?.signature
-      if (!raw) return { error: 'bad-signature' }
-      const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw)
-      if (bytes.length !== 64) return { error: 'bad-signature' }
-      return { address, signature: encode(bytes) }
+      if (!raw || raw.length !== 64) return { error: 'bad-signature' }
+      let text = ''
+      for (let i = 0; i < raw.length; i += 1) text += String.fromCharCode(raw[i]!)
+      return { address, signature: btoa(text) }
     })
     .catch((error: unknown) => ({
       error: error instanceof Error && error.message ? error.message.slice(0, 80) : 'sign-failed',
     }))
 }
 
+function isSignRequest(value: unknown): value is SignRequest {
+  if (typeof value !== 'object' || value === null) return false
+  const row = value as Record<string, unknown>
+  return row.kind === 'solana-message' && typeof row.message === 'string'
+}
+
 chrome.runtime.onMessage.addListener(
-  (message: { type?: string; message?: string }, sender, sendResponse) => {
+  (message: { type?: string; request?: unknown }, sender, sendResponse) => {
     // Only this extension's own content scripts. `sender.id` is the extension id for our own
     // contexts; a web page cannot set it.
     if (sender.id !== chrome.runtime.id) return
@@ -148,13 +147,17 @@ chrome.runtime.onMessage.addListener(
       sendResponse({ error: 'bad-origin' })
       return
     }
+    if (!isSignRequest(message.request)) {
+      sendResponse({ error: 'bad-request' })
+      return
+    }
 
     void chrome.scripting
       .executeScript({
         target: { tabId, frameIds: [sender.frameId ?? 0] },
         world: 'MAIN',
         func: signInPageWorld,
-        args: [String(message.message ?? '')],
+        args: [message.request],
       })
       .then((results) => sendResponse(results[0]?.result ?? { error: 'no-result' }))
       .catch(() => sendResponse({ error: 'no-result' }))

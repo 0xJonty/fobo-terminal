@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ColumnControls } from '~/ui/ColumnControls'
+import { QuickBuyAmount } from '~/ui/QuickBuyAmount'
 import { filtersActive, type ColumnPrefs } from '~/lib/columnPrefs'
+import { useDisplaySettings } from '~/lib/displayPrefs'
 import { HIDDEN_EVENT } from '~/lib/host'
 import type { ListKey } from '~/lib/protocol'
 import { TokenCard } from '~/ui/TokenCard'
@@ -51,6 +53,8 @@ export function Column({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hovered, setHovered] = useState(false)
+  // The amount box is quick buy's, so it goes when quick buy does.
+  const showBuyAmount = useDisplaySettings().fields.quickBuy
 
   /**
    * Pause-on-hover. Rows prepend constantly, so without this a row can slide out from
@@ -98,6 +102,7 @@ export function Column({
             stale
           </span>
         )}
+        {showBuyAmount && <QuickBuyAmount list={list} />}
         <ColumnControls list={list} prefs={prefs} onChange={onPrefsChange} />
       </header>
 
@@ -137,6 +142,7 @@ export function Column({
                     token={token}
                     fresh={freshKeys.has(token.key)}
                     showBond={showBond}
+                    list={list}
                     onOpen={onOpen}
                   />
                 </div>

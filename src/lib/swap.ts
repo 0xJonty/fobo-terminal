@@ -2,22 +2,30 @@
  * Quick buy: one market buy of a token, funded from the same USDC cash rail fomo's own trade
  * panel spends.
  *
- * Every step here mirrors fomo's own client rather than inventing a trade path. Its bundle
- * has exactly one swap call site, and this is the shape it sends:
+ * Every step here mirrors fomo's own client rather than inventing a trade path. Its bundle has
+ * exactly one swap call site, and this is the shape it sends:
  *
  *     POST /swaps/v2 { inTokenId, outTokenId, amount, retry }
  *     buy  -> [USDC, token]      sell -> [token, USDC]
  *
- * The server builds the transaction, simulates it, and signs it as FEE PAYER — the response
- * carries `swapTransaction` plus `feePayerSignature`. The only missing piece is the user's own
- * signature, which their wallet lives in fomo's page to provide (see lib/sign.ts). fomo's fee
- * tier and flat fee are set by that server on its own terms; nothing here touches them.
+ * The server builds the transaction, simulates it, and signs it as FEE PAYER. The only missing
+ * piece is the user's own signature, which their wallet lives in fomo's page to provide (see
+ * lib/sign.ts). fomo's fee tier and flat fee are set by that server on its own terms; nothing
+ * here touches them.
  *
- * Solana only. fomo routes EVM buys through a relay that wants an EVM signature and a
- * different confirmation flow (`v2Swap` in its response); this asks for a quote it cannot
- * complete rather than pretending, and the button never renders on a non-Solana row.
+ * Two routes come back, and BOTH are signed identically — because cash is Solana USDC, the
+ * transaction the user signs is always a Solana one:
+ *
+ *   v1Swap    the token is on Solana. One transaction, one confirmation.
+ *   v2Swap    the token is on another chain. The same Solana deposit, plus a Relay leg that
+ *             delivers on the destination chain — so "confirmed" needs both (lib/chainRpc.ts).
+ *
+ * A v2Swap whose relay transaction is NOT of type SOLANA would be an EVM-origin route, which
+ * only arises when selling an EVM holding. Quick buy never sells, so that is refused rather
+ * than half-handled.
  */
 
+import { relayStatus, solanaSignatureStatus, type ConfirmResult } from '~/lib/chainRpc'
 import { readJwt } from '~/lib/fomoApi'
 import { countRequest } from '~/lib/host'
 import { SUPPORTED_CHAINS } from '~/lib/protocol'
@@ -30,7 +38,7 @@ import {
   transactionSignature,
   withSignature,
 } from '~/lib/solanaTx'
-import type { Token } from '~/types/token'
+import { chainSlug, type Token } from '~/types/token'
 
 const BASE = 'https://prod-api.fomo.family'
 
@@ -43,10 +51,10 @@ const USDC_DECIMALS = 6
 export const SWAP_MIN_USD = 2
 
 /**
- * Jito's block engine (bundles, when the quote carries a tip transaction) and Hudson (its
- * plain submit endpoint), both lifted from fomo's bundle. Neither needs a host permission:
- * these run from the content script at fomo's own origin, and both allow it — the same way
- * every other call in this codebase reaches prod-api.
+ * Jito's block engine (bundles, when the quote carries a tip transaction) and Hudson (its plain
+ * submit endpoint), both lifted from fomo's bundle. Neither needs a host permission: these run
+ * from the content script at fomo's own origin, and both allow it — the same way every other
+ * call in this codebase reaches prod-api.
  *
  * fomo sends its bundles with a hardcoded `x-jito-auth` uuid. That is their rate-limit quota,
  * not ours, so the unauthenticated path is used here.
@@ -57,7 +65,6 @@ const HUDSON_URL = 'https://mainnet.hudson.jito.wtf/api/v1/sendTransactionWeb?me
 const QUOTE_TIMEOUT_MS = 15_000
 const SUBMIT_TIMEOUT_MS = 15_000
 
-/** The fields of fomo's `v1Swap` this flow actually uses. */
 export interface SwapQuote {
   /** Base64 transaction, fee-payer-signed, user slot still empty. */
   transaction: string
@@ -66,9 +73,13 @@ export interface SwapQuote {
   feePayerSignature: string
   /** Present when the swap is meant to go out as a Jito bundle. */
   jitoTipTx?: string
+  /** Present on a cross-chain route; the token arrives when Relay fills this request. */
+  relaySwapId?: string
   expectedOutHumanAmount?: number
   swapUsdValue?: number
+  /** fomo's own charges, shown so the button's tooltip can be honest about them. */
   flatFee?: number
+  feeTierBps?: number
 }
 
 export type QuoteResult = { ok: true; quote: SwapQuote } | { ok: false; message: string }
@@ -78,7 +89,7 @@ interface SwapEnvelope {
   message?: string
   responseObject?: {
     v1Swap?: Record<string, unknown>
-    v2Swap?: unknown
+    v2Swap?: Record<string, unknown>
   }
 }
 
@@ -95,13 +106,18 @@ export function usdToBaseUnits(amountUsd: number): string {
   return String(Math.round(amountUsd * 10 ** USDC_DECIMALS))
 }
 
+/** Quick buy is offered for any chain fomo itself lists. */
+export function canQuickBuy(token: Token): boolean {
+  return chainSlug(token.networkId) !== undefined
+}
+
 /**
  * Ask fomo to build the buy. Unlike lib/fomoApi's `call`, the message on failure is kept and
  * shown: "below minimum $2.00", "insufficient funds" and a reverted simulation are all things
  * the user needs to read, and collapsing them to a null would leave the button silently dead.
  */
 export async function quoteBuy(token: Token, amountUsd: number, signal?: AbortSignal): Promise<QuoteResult> {
-  if (token.networkId !== SOLANA_NETWORK_ID) return { ok: false, message: 'Solana tokens only' }
+  if (!canQuickBuy(token)) return { ok: false, message: 'Unsupported chain' }
   if (!(amountUsd >= SWAP_MIN_USD)) return { ok: false, message: `Minimum is $${SWAP_MIN_USD}` }
 
   const jwt = readJwt()
@@ -138,32 +154,67 @@ export async function quoteBuy(token: Token, amountUsd: number, signal?: AbortSi
   }
 
   if (!body.success) return { ok: false, message: quoteError(body, response.status) }
+  return readQuote(body)
+}
 
+/** Both routes reduce to the same four fields plus, for a relayed buy, its request id. */
+function readQuote(body: SwapEnvelope): QuoteResult {
   const v1 = body.responseObject?.v1Swap
-  if (!v1) {
-    // A v2Swap is fomo's cross-chain relay path, which needs an EVM signature.
+  if (v1) {
+    const quote = solanaFields(v1.swapTransaction, v1.feePayerSignature, v1.feePayerAddress)
+    if (!quote) return { ok: false, message: 'Incomplete quote' }
+    return {
+      ok: true,
+      quote: {
+        ...quote,
+        jitoTipTx: str(v1.jitoTipTx),
+        expectedOutHumanAmount: num(v1.expectedOutHumanAmount),
+        swapUsdValue: num(v1.swapUsdValue),
+        flatFee: num(v1.flatFee),
+        feeTierBps: num(v1.feeTierBps),
+      },
+    }
+  }
+
+  const v2 = body.responseObject?.v2Swap
+  if (!v2) return { ok: false, message: 'Incomplete quote' }
+
+  const relay = (typeof v2.relayTransaction === 'object' && v2.relayTransaction !== null
+    ? v2.relayTransaction
+    : {}) as Record<string, unknown>
+  if (relay.type !== 'SOLANA') {
+    // An EVM-origin route. Only a sell produces one, and quick buy does not sell.
     return { ok: false, message: 'Unsupported swap route' }
   }
 
-  const transaction = str(v1.swapTransaction)
-  const feePayerAddress = str(v1.feePayerAddress)
-  const feePayerSignature = str(v1.feePayerSignature)
-  if (!transaction || !feePayerAddress || !feePayerSignature) {
-    return { ok: false, message: 'Incomplete quote' }
-  }
+  const quote = solanaFields(relay.tx, relay.feePayerSignature, relay.feePayerAddress)
+  if (!quote) return { ok: false, message: 'Incomplete quote' }
+  const relaySwapId = str(v2.relaySwapId)
+  if (!relaySwapId) return { ok: false, message: 'Incomplete quote' }
 
   return {
     ok: true,
     quote: {
-      transaction,
-      feePayerAddress,
-      feePayerSignature,
-      jitoTipTx: str(v1.jitoTipTx),
-      expectedOutHumanAmount: num(v1.expectedOutHumanAmount),
-      swapUsdValue: num(v1.swapUsdValue),
-      flatFee: num(v1.flatFee),
+      ...quote,
+      relaySwapId,
+      expectedOutHumanAmount: num(v2.expectedOutHumanAmount),
+      swapUsdValue: num(v2.swapUsdValue),
+      flatFee: num(v2.flatFee),
+      feeTierBps: num(v2.feeTierBps),
     },
   }
+}
+
+function solanaFields(
+  transaction: unknown,
+  feePayerSignature: unknown,
+  feePayerAddress: unknown,
+): Pick<SwapQuote, 'transaction' | 'feePayerAddress' | 'feePayerSignature'> | null {
+  const tx = str(transaction)
+  const signature = str(feePayerSignature)
+  const address = str(feePayerAddress)
+  if (!tx || !signature || !address) return null
+  return { transaction: tx, feePayerSignature: signature, feePayerAddress: address }
 }
 
 /**
@@ -178,14 +229,16 @@ function quoteError(body: SwapEnvelope, status: number): string {
   return `Quote failed (${status})`
 }
 
-export type SubmitResult = { ok: true; signature: string } | { ok: false; message: string }
+export type SubmitResult =
+  | { ok: true; signature: string; relaySwapId?: string }
+  | { ok: false; message: string }
 
 /**
  * Complete the quote with a signature from the user's wallet and send it.
  *
- * `sign` is handed the message bytes (base64) and returns the address that signed alongside
- * the signature — the address is what picks the signature slot, so a wallet other than the one
- * the server built for is caught here instead of producing an invalid transaction.
+ * `sign` is handed the message bytes (base64) and returns the address that signed alongside the
+ * signature — the address is what picks the signature slot, so a wallet other than the one the
+ * server built for is caught here instead of producing an invalid transaction.
  */
 export async function signAndSubmit(
   quote: SwapQuote,
@@ -221,11 +274,14 @@ export async function signAndSubmit(
 
   const sent = await submit(base64Encode(next), quote.jitoTipTx)
   if (!sent.ok) return sent
-  return { ok: true, signature: transactionSignature(next, parsed) }
+  return { ok: true, signature: transactionSignature(next, parsed), relaySwapId: quote.relaySwapId }
 }
 
 /** Jito bundle when the quote tipped for one, Hudson otherwise — the same fork fomo takes. */
-async function submit(transactionBase64: string, jitoTipTx?: string): Promise<{ ok: true } | { ok: false; message: string }> {
+async function submit(
+  transactionBase64: string,
+  jitoTipTx?: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
   countRequest(jitoTipTx ? 'jito/bundles' : 'hudson/sendTransactionWeb')
   try {
     if (jitoTipTx) {
@@ -257,4 +313,23 @@ async function submit(transactionBase64: string, jitoTipTx?: string): Promise<{ 
   } catch {
     return { ok: false, message: 'Submit failed' }
   }
+}
+
+/** Which leg a pending buy is waiting on — the caller polls them at different cadences. */
+export interface BuyProgress extends ConfirmResult {
+  leg: 'deposit' | 'relay'
+}
+
+/**
+ * One confirmation poll for a submitted buy.
+ *
+ * The deposit has to land before the relay leg means anything, so the legs are read in order: a
+ * reverted deposit is reported straight away, and only once it is confirmed does a cross-chain
+ * buy start asking Relay whether the token arrived. A same-chain buy is done at leg one.
+ */
+export async function confirmBuy(signature: string, relaySwapId?: string): Promise<BuyProgress> {
+  const deposit = await solanaSignatureStatus(signature)
+  if (deposit.state !== 'confirmed') return { ...deposit, leg: 'deposit' }
+  if (!relaySwapId) return { state: 'confirmed', leg: 'deposit' }
+  return { ...(await relayStatus(relaySwapId)), leg: 'relay' }
 }
