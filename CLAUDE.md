@@ -239,6 +239,21 @@ and its `data-fobo-build` against the stamp in the emitted bundle before suspect
   data-fobo-active is false and all visibility-gated polling (session.ts, mobula, backfill)
   stays paused. Verify gated features with a background until-loop on data-fobo-requests;
   it fires when the user actually views the tab.
+- Headless component harness (E2E a UI component WITHOUT Chrome or the extension): node 24
+  has a global `WebSocket`, so raw CDP needs no dependency — spawn
+  `~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell`
+  with `--remote-debugging-port=0`, read the `ws://` line off stderr, `Target.createTarget` +
+  `attachToTarget {flatten:true}`, then `Runtime.evaluate` / `Input.dispatchMouseEvent`. Build the
+  component with a throwaway `vite.harness.config.ts` in the project ROOT (lib mode, IIFE, entry and
+  stub modules inside the repo — resolution fails from a scratchpad dir), aliasing `~/lib/session` to
+  a stub resource and defining `process.env.NODE_ENV` (lib mode omits it and React throws
+  `process is not defined`). Mount into an OPEN shadow root so CDP can read inside, and stub
+  `chrome.storage.sync` over localStorage so a reload is a new "session". Trusted CDP mouse events
+  drive real pointer capture; synthetic PointerEvents cannot. Delete the config and the entry dir
+  after the run — neither belongs in a commit.
+- `pkill -f chrome-headless-shell` KILLS THE INVOKING SHELL: the pattern matches the command line
+  that contains it, so the rest of the compound command never runs. Bracket a letter
+  (`chrome-headless-shel[l]`) or skip it.
 - Page-world error capture that works: eval-install a collector (patch console.error/warn,
   window "error"+"unhandledrejection" listeners, wrap window.fetch for !ok statuses) into a
   window var and read it back after clicking around. Sees fomo's errors only — the
