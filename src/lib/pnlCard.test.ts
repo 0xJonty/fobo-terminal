@@ -31,6 +31,12 @@ describe('sanitizePnlSettings', () => {
     expect(sanitizePnlSettings({ baselineUsd: -12.5 }).baselineUsd).toBe(-12.5)
     expect(sanitizePnlSettings({}).baselineUsd).toBeNull()
   })
+
+  it('treats a record written before the flag existed as enabled', () => {
+    expect(sanitizePnlSettings({ x: 10 }).enabled).toBe(true)
+    expect(sanitizePnlSettings({ enabled: false }).enabled).toBe(false)
+    expect(sanitizePnlSettings({ enabled: 'yes' }).enabled).toBe(true)
+  })
 })
 
 describe('clampGeometry', () => {

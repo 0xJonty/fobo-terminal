@@ -30,9 +30,19 @@ export interface PnlCardGeometry {
   height: number
 }
 
-export interface PnlCardSettings extends PnlCardGeometry {
+/** Everything the card itself owns and writes: where it sits and what it counts from. */
+export interface PnlCardState extends PnlCardGeometry {
   /** The balance the PnL counts from; null until the first reading seeds it. */
   baselineUsd: number | null
+}
+
+export interface PnlCardSettings extends PnlCardState {
+  /**
+   * Whether the card shows at all. The POPUP owns this one — the card never writes it, and
+   * its own writes merge onto whatever storage holds, so a toggle flipped while the terminal
+   * is open is not undone by the next drag.
+   */
+  enabled: boolean
 }
 
 /** Opens under the top bar at the left edge of the first column, out of the header's way. */
@@ -42,6 +52,7 @@ export const PNL_DEFAULT: PnlCardSettings = {
   width: 200,
   height: 96,
   baselineUsd: null,
+  enabled: true,
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -62,6 +73,9 @@ export function sanitizePnlSettings(raw: unknown): PnlCardSettings {
     height: Math.round(clamp(finiteOr(row.height, PNL_DEFAULT.height), PNL_MIN_HEIGHT, PNL_MAX_HEIGHT)),
     baselineUsd:
       typeof row.baselineUsd === 'number' && Number.isFinite(row.baselineUsd) ? row.baselineUsd : null,
+    // Absent means on: the card shipped before this flag existed, and an upgrade must not
+    // silently hide it.
+    enabled: row.enabled !== false,
   }
 }
 
@@ -122,13 +136,14 @@ export async function readPnlSettings(): Promise<PnlCardSettings> {
   }
 }
 
-function writePnlSettings(settings: PnlCardSettings): void {
+async function writePnlState(state: PnlCardState): Promise<void> {
   try {
-    chrome.storage.sync.set({ [PNL_KEY]: settings }).catch(() => {
-      /* quota or a context already gone — the card just does not persist this time */
-    })
+    // Read-modify-write, exactly as the popup does: `enabled` is not ours, and writing a
+    // snapshot taken when the card mounted would put a stale value back on the first drag.
+    const stored = await withTimeout(chrome.storage.sync.get(PNL_KEY), STORAGE_READ_TIMEOUT_MS, {})
+    await chrome.storage.sync.set({ [PNL_KEY]: { ...sanitizePnlSettings(stored[PNL_KEY]), ...state } })
   } catch {
-    /* context already gone */
+    /* quota or a context already gone — the card just does not persist this time */
   }
 }
 
@@ -137,4 +152,38 @@ function writePnlSettings(settings: PnlCardSettings): void {
  * can re-clamp several times in a row and chrome.storage.sync caps writes at 120/minute.
  * The last value wins.
  */
-export const savePnlSettings: (settings: PnlCardSettings) => void = debounce(writePnlSettings, 400)
+export const savePnlState: (state: PnlCardState) => void = debounce(
+  (state: PnlCardState) => void writePnlState(state),
+  400,
+)
+
+/** The popup's half of the record. Read-modify-write, so a drag in flight is not clobbered. */
+export async function savePnlEnabled(enabled: boolean): Promise<PnlCardSettings> {
+  const next = { ...(await readPnlSettings()), enabled }
+  try {
+    await chrome.storage.sync.set({ [PNL_KEY]: next })
+  } catch {
+    /* context already gone */
+  }
+  return next
+}
+
+/** Watch the record (the popup toggling the card on or off). Returns an unsubscribe. */
+export function watchPnlSettings(onChange: (settings: PnlCardSettings) => void): () => void {
+  const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+    if (area !== 'sync' || !(PNL_KEY in changes)) return
+    onChange(sanitizePnlSettings(changes[PNL_KEY]?.newValue))
+  }
+  try {
+    chrome.storage.onChanged.addListener(listener)
+    return () => {
+      try {
+        chrome.storage.onChanged.removeListener(listener)
+      } catch {
+        /* context already gone */
+      }
+    }
+  } catch {
+    return () => {}
+  }
+}

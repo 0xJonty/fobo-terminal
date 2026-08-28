@@ -29,6 +29,7 @@ import { MAX_ROWS, applyDiff } from '~/lib/listStore'
 import { createFomoSocket, type SocketStatus } from '~/lib/fomoSocket'
 import { setDiag } from '~/lib/host'
 import { metricsFor, warm } from '~/lib/mobula'
+import { readPnlSettings, watchPnlSettings } from '~/lib/pnlCard'
 import { LIST_KEYS, LIST_LABEL, type ListDiff, type ListKey } from '~/lib/protocol'
 import { currentUserStore, useCurrentUser, watchlistTokens } from '~/lib/session'
 import {
@@ -132,6 +133,18 @@ export function App({
         })
       }, FRESH_MS),
     )
+  }, [])
+
+  /* ---- PnL card: the popup owns whether it shows ---- */
+
+  // Null until the preference has been read, so the card never flashes on for a user who
+  // switched it off. The card owns its own geometry and baseline (see ui/PnlCard.tsx); only
+  // the on/off flag is watched here, and gating the mount means a hidden card subscribes to
+  // nothing.
+  const [pnlEnabled, setPnlEnabled] = useState<boolean | null>(null)
+  useEffect(() => {
+    void readPnlSettings().then((stored) => setPnlEnabled(stored.enabled))
+    return watchPnlSettings((stored) => setPnlEnabled(stored.enabled))
   }, [])
 
   /* ---- FOMO Panel: settings, view, backfill, live feeds ---- */
@@ -638,7 +651,7 @@ export function App({
       <BottomBar onNavigate={onOpen} />
 
       {/* Floats over everything above; last in the DOM so it also paints last. */}
-      <PnlCard />
+      {pnlEnabled && <PnlCard />}
     </div>
   )
 }

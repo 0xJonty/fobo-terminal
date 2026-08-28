@@ -4,9 +4,9 @@ import {
   clampGeometry,
   dragGeometry,
   readPnlSettings,
-  savePnlSettings,
+  savePnlState,
   type PnlCardGeometry,
-  type PnlCardSettings,
+  type PnlCardState,
   type PnlDragMode,
 } from '~/lib/pnlCard'
 import { useResource } from '~/lib/resource'
@@ -40,15 +40,16 @@ function viewport(): { width: number; height: number } {
 }
 
 export function PnlCard() {
-  const [settings, setSettings] = useState<PnlCardSettings | null>(null)
+  const [settings, setSettings] = useState<PnlCardState | null>(null)
 
-  // Loaded once. This card is the only writer, so there is no storage watcher: one would
-  // echo debounced writes back over a drag already in progress (same reasoning as the
-  // column prefs in content/App.tsx).
+  // Loaded once. Nothing else writes the geometry or the baseline, so there is no storage
+  // watcher here: one would echo debounced writes back over a drag already in progress (same
+  // reasoning as the column prefs in content/App.tsx). The popup's `enabled` flag IS watched,
+  // but by App.tsx, which decides whether this component is mounted at all.
   useEffect(() => {
-    void readPnlSettings().then((stored) => {
-      const { width, height } = viewport()
-      setSettings({ ...stored, ...clampGeometry(stored, width, height) })
+    void readPnlSettings().then(({ x, y, width, height, baselineUsd }) => {
+      const view = viewport()
+      setSettings({ baselineUsd, ...clampGeometry({ x, y, width, height }, view.width, view.height) })
     })
   }, [])
 
@@ -56,9 +57,9 @@ export function PnlCard() {
   const balanceUsd = numbers?.portfolioUsd
 
   /** State now, storage on release — the same split the panel's edge drag uses. */
-  const commit = useCallback((next: PnlCardSettings) => {
+  const commit = useCallback((next: PnlCardState) => {
     setSettings(next)
-    savePnlSettings(next)
+    savePnlState(next)
   }, [])
 
   // The first balance of a fresh install seeds the baseline, so the card opens at zero
@@ -93,7 +94,7 @@ export function PnlCard() {
   // The latest committed geometry, for the release handler: pointerup lands after the last
   // move's render, so this is what the user actually let go of. Reading it from a ref keeps
   // the storage write out of a state updater, which React is free to run more than once.
-  const latest = useRef<PnlCardSettings | null>(null)
+  const latest = useRef<PnlCardState | null>(null)
   useEffect(() => {
     latest.current = settings
   }, [settings])
@@ -130,7 +131,7 @@ export function PnlCard() {
     const state = drag.current
     if (!state || state.pointerId !== event.pointerId) return
     drag.current = null
-    if (latest.current) savePnlSettings(latest.current)
+    if (latest.current) savePnlState(latest.current)
   }
 
   const reset = () => {

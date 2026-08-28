@@ -63,27 +63,30 @@ describe('usdCompact', () => {
     expect(usdCompact(2_500_000_000)).toBe('$2.5b')
   })
 
-  it('takes its precision from the real magnitude: two decimals under $10,000, one above', () => {
-    expect(usdCompact(1_234)).toBe('$1.23k')
-    expect(usdCompact(1_500)).toBe('$1.5k')
-    expect(usdCompact(15_949)).toBe('$15.9k')
-    expect(usdCompact(1_500_000)).toBe('$1.5m')
+  it('truncates, never rounds — $9,999 is not $10k', () => {
+    expect(usdCompact(9_999)).toBe('$9.999k')
+    expect(usdCompact(9_999.99)).toBe('$9.999k')
+    expect(usdCompact(999_999.95)).toBe('$999.999k')
+    expect(usdCompact(1_999_999)).toBe('$1.999m')
   })
 
-  it('renders under $1,000 as plain dollars', () => {
+  it('carries three decimals from $1,000 up', () => {
+    expect(usdCompact(1_234)).toBe('$1.234k')
+    expect(usdCompact(1_500)).toBe('$1.5k')
+    expect(usdCompact(15_949)).toBe('$15.949k')
+    expect(usdCompact(1_543_210)).toBe('$1.543m')
+  })
+
+  it('renders under $1,000 as plain dollars, truncated to cents', () => {
     expect(usdCompact(0)).toBe('$0.00')
     expect(usdCompact(12.5)).toBe('$12.50')
-    expect(usdCompact(999.99)).toBe('$999.99')
+    expect(usdCompact(999.999)).toBe('$999.99')
   })
 
-  it('carries a rounded value into the next unit instead of showing 1000.0k', () => {
-    expect(usdCompact(999.999)).toBe('$1k')
-    expect(usdCompact(999_999.95)).toBe('$1m')
-  })
-
-  it('puts the sign before the symbol, and has nothing to show for nothing', () => {
+  it('puts the sign before the symbol, and never overstates a loss', () => {
     expect(usdCompact(-1_200)).toBe('-$1.2k')
-    expect(usdCompact(-45.6)).toBe('-$45.60')
+    expect(usdCompact(-9_999)).toBe('-$9.999k')
+    expect(usdCompact(-45.678)).toBe('-$45.67')
     expect(usdCompact(undefined)).toBe('—')
     expect(usdCompact(Number.NaN)).toBe('—')
   })

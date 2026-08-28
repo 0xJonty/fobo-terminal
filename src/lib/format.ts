@@ -46,13 +46,13 @@ export function usdDelta(value: number | undefined): string {
 }
 
 /**
- * Compact dollars for the PnL card: $1k / $15.9k / $1.5m.
+ * Compact dollars for the PnL card: $1k / $9.999k / $1.543m.
  *
- * Precision follows the REAL magnitude, not the scaled one — one decimal from $10,000 up,
- * two below it. A suffixed number drops its trailing zeros, so a round thousand reads as $1k
- * rather than $1.00k; plain dollars under $1,000 keep their cents ($12.50), because there
- * they are cents and not padding. Deliberately separate from usd(): that one mirrors Intl's
- * compact notation (uppercase $1.2K) for the token columns, this is the card's house style.
+ * TRUNCATED, never rounded — a balance of $9,999 must not read as $10k, and a loss must not
+ * read deeper than it is. Three decimals from $1,000 up (so the thousands digit is never
+ * lost), cents below it, and trailing zeros dropped on a suffixed number so a round thousand
+ * still reads as $1k. Deliberately separate from usd(), which mirrors Intl's rounded compact
+ * notation (uppercase $1.2K) for the token columns.
  */
 const COMPACT_UNITS = [
   { limit: 1e12, suffix: 't' },
@@ -60,6 +60,18 @@ const COMPACT_UNITS = [
   { limit: 1e6, suffix: 'm' },
   { limit: 1e3, suffix: 'k' },
 ] as const
+
+/**
+ * Cut, do not round, at `digits` decimals. The extra guard digits absorb the noise a binary
+ * float carries (15.949 can land as 15.948999999999998, which a naive cut would show as
+ * 15.948); toFixed only rounds four places below anything on screen, and the string slice
+ * that follows cannot round at all.
+ */
+function truncateTo(value: number, digits: number): string {
+  const fixed = value.toFixed(digits + 4)
+  const dot = fixed.indexOf('.')
+  return fixed.slice(0, dot + 1 + digits)
+}
 
 function trimZeros(fixed: string): string {
   if (!fixed.includes('.')) return fixed
@@ -70,21 +82,10 @@ export function usdCompact(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return '—'
   const sign = value < 0 ? '-' : ''
   const abs = Math.abs(value)
-  const digits = abs >= 10_000 ? 1 : 2
-
-  // The largest unit at or below the value; none means plain dollars, under $1,000.
-  let unit = COMPACT_UNITS.find((candidate) => abs >= candidate.limit)
-  let shown = (unit ? abs / unit.limit : abs).toFixed(digits)
-
-  // Rounding can carry a number into the next unit up ($999,999.95 is 1000.0k, i.e. $1m).
-  if (Number(shown) >= 1000) {
-    const bigger = COMPACT_UNITS[(unit ? COMPACT_UNITS.indexOf(unit) : COMPACT_UNITS.length) - 1]
-    if (bigger) {
-      unit = bigger
-      shown = (abs / bigger.limit).toFixed(digits)
-    }
-  }
-  return unit ? `${sign}$${trimZeros(shown)}${unit.suffix}` : `${sign}$${shown}`
+  const unit = COMPACT_UNITS.find((candidate) => abs >= candidate.limit)
+  // Truncation can never carry a number up into the next unit, so there is no overflow case.
+  if (!unit) return `${sign}$${truncateTo(abs, 2)}`
+  return `${sign}$${trimZeros(truncateTo(abs / unit.limit, 3))}${unit.suffix}`
 }
 
 /** The same compact dollars as a signed delta, for a PnL figure: +$1.5k / -$320.40 */
