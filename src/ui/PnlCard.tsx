@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, Settings } from 'lucide-react'
+import { useClickAway } from '~/lib/clickAway'
 import { usdCompact, usdCompactDelta } from '~/lib/format'
+import { HIDDEN_EVENT } from '~/lib/host'
 import {
   clampGeometry,
+  clearPnlImage,
   dragGeometry,
+  importPnlImage,
+  isImageDataUrl,
+  readPnlImage,
   readPnlSettings,
+  savePnlImage,
   savePnlState,
   type PnlCardGeometry,
   type PnlCardState,
@@ -18,9 +25,14 @@ import { balances } from '~/lib/session'
  * user last zeroed it, split evenly left and right. Dragged from anywhere on it, resized from
  * its bottom-right corner, both persisted (lib/pnlCard.ts).
  *
- * The reset control is pinned to the top-right corner and the right column reserves its
- * width, so the two halves stay an even 50/50 and no number ever runs under the button. Type
- * and the glyph both scale with the card — see the .pnlcard rules in content/styles.css.
+ * The reset and settings controls are pinned to the top-right corner and the right column
+ * reserves their width, so the two halves stay an even 50/50 and no number ever runs under
+ * them. Type and the glyphs both scale with the card — see content/styles.css.
+ *
+ * Settings opens a panel under the card: the background image (a picked file, downscaled and
+ * kept in chrome.storage.local) and the fill's opacity. Opacity dims the FILL only — the
+ * frame, the numbers and these controls keep theirs, so a card faded to nothing is still
+ * readable and still has the control that would undo it.
  *
  * One pointer handler on the card owns both gestures: the target decides which. That is why
  * the grip and the reset control carry no handlers of their own — a second set would fire on
@@ -56,11 +68,48 @@ export function PnlCard() {
   // reasoning as the column prefs in content/App.tsx). The popup's `enabled` flag IS watched,
   // but by App.tsx, which decides whether this component is mounted at all.
   useEffect(() => {
-    void readPnlSettings().then(({ x, y, width, height, baselineUsd }) => {
+    void readPnlSettings().then(({ x, y, width, height, baselineUsd, opacity }) => {
       const view = viewport()
-      setSettings({ baselineUsd, ...clampGeometry({ x, y, width, height }, view.width, view.height) })
+      setSettings({ baselineUsd, opacity, ...clampGeometry({ x, y, width, height }, view.width, view.height) })
     })
   }, [])
+
+  /* ---- the settings panel: background image and fill opacity ---- */
+
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [image, setImage] = useState<string | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    void readPnlImage().then(setImage)
+  }, [])
+
+  useClickAway(menuRef, menuOpen, () => setMenuOpen(false))
+  useEffect(() => {
+    const close = () => setMenuOpen(false)
+    window.addEventListener(HIDDEN_EVENT, close)
+    return () => window.removeEventListener(HIDDEN_EVENT, close)
+  }, [])
+
+  const pickImage = (file: File | undefined) => {
+    if (!file) return
+    setImageError(null)
+    void importPnlImage(file).then(
+      (dataUrl) => {
+        setImage(dataUrl)
+        void savePnlImage(dataUrl).catch(() => setImageError('That image could not be saved.'))
+      },
+      (error: unknown) => setImageError(error instanceof Error ? error.message : 'That image could not be used.'),
+    )
+  }
+
+  const resetImage = () => {
+    setImageError(null)
+    setImage(null)
+    void clearPnlImage()
+  }
 
   const numbers = useResource(balances)?.numbers ?? null
   const balanceUsd = numbers?.portfolioUsd
@@ -111,9 +160,9 @@ export function PnlCard() {
   const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (!settings || event.button !== 0) return
     const target = event.target as HTMLElement
-    // The reset control is a click, not a gesture; the corner grip resizes; everything else
-    // on the card moves it.
-    if (target.closest('button')) return
+    // The corner controls and the settings panel are clicks, not gestures; the corner grip
+    // resizes; everything else on the card moves it.
+    if (target.closest('button, input, label, .pnlcard-menu')) return
     const mode: PnlDragMode = target.closest('.pnlcard-grip') ? 'resize' : 'move'
     event.preventDefault()
     drag.current = {
@@ -152,6 +201,15 @@ export function PnlCard() {
     commit({ ...settings, baselineUsd: balanceUsd })
   }
 
+  // Live while dragging the slider, persisted on release — the same split as the card's own
+  // geometry, so a sweep of the range is one storage write rather than a hundred.
+  const changeOpacity = (opacity: number) => {
+    setSettings((current) => (current ? { ...current, opacity } : current))
+  }
+  const commitOpacity = () => {
+    if (latest.current) savePnlState(latest.current)
+  }
+
   if (!settings) return null
 
   const pnl =
@@ -159,6 +217,8 @@ export function PnlCard() {
   // Exactly flat is neither a gain nor a loss, so it stays in the neutral text colour —
   // painting it green would claim a profit that is not there.
   const tone = pnl === undefined || pnl === 0 ? 'flat' : pnl > 0 ? 'up' : 'down'
+
+  const custom = isImageDataUrl(image) ? image : null
 
   return (
     <section
@@ -170,17 +230,40 @@ export function PnlCard() {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      <button
-        type="button"
-        className="pnlcard-reset"
-        title="Zero the PnL at the current balance"
-        aria-label="Zero the PnL at the current balance"
-        disabled={balanceUsd === undefined}
-        onClick={reset}
-      >
-        {/* Sized by CSS, not by the prop — the glyph scales with the card like the type does. */}
-        <RotateCcw aria-hidden="true" />
-      </button>
+      {/* The fill: surface, pattern and wordmark, or the user's own image. Only this layer
+          takes the opacity, and it never takes a pointer. */}
+      <div
+        className="pnlcard-fill"
+        data-custom={custom ? 'true' : undefined}
+        style={{
+          opacity: settings.opacity / 100,
+          ...(custom ? { backgroundImage: `url("${custom}")` } : {}),
+        }}
+      />
+
+      <div className="pnlcard-corner">
+        <button
+          type="button"
+          className="pnlcard-control"
+          title="Zero the PnL at the current balance"
+          aria-label="Zero the PnL at the current balance"
+          disabled={balanceUsd === undefined}
+          onClick={reset}
+        >
+          {/* Sized by CSS, not by the prop — the glyphs scale with the card like the type does. */}
+          <RotateCcw aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="pnlcard-control"
+          title="Card settings"
+          aria-label="Card settings"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <Settings aria-hidden="true" />
+        </button>
+      </div>
 
       <div className="pnlcard-cell">
         <span className="pnlcard-label">Balance</span>
@@ -193,6 +276,58 @@ export function PnlCard() {
           {usdCompactDelta(pnl)}
         </span>
       </div>
+
+      {menuOpen && (
+        <div className="pnlcard-menu" ref={menuRef}>
+          <div className="pnlcard-menu-row">
+            <span className="pnlcard-menu-label">Background</span>
+            <div className="pnlcard-menu-actions">
+              <button type="button" className="pnlcard-menu-button" onClick={() => fileRef.current?.click()}>
+                Choose…
+              </button>
+              <button
+                type="button"
+                className="pnlcard-menu-button"
+                disabled={custom === null}
+                onClick={resetImage}
+              >
+                Default
+              </button>
+            </div>
+            <input
+              ref={fileRef}
+              className="pnlcard-file"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                pickImage(event.target.files?.[0])
+                // Clear the input so picking the same file twice still fires a change.
+                event.target.value = ''
+              }}
+            />
+          </div>
+
+          <div className="pnlcard-menu-row">
+            <span className="pnlcard-menu-label">Opacity</span>
+            <input
+              className="pnlcard-slider"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={settings.opacity}
+              aria-label="Card opacity"
+              onChange={(event) => changeOpacity(Number(event.target.value))}
+              onPointerUp={commitOpacity}
+              onKeyUp={commitOpacity}
+              onBlur={commitOpacity}
+            />
+            <span className="pnlcard-menu-value">{settings.opacity}%</span>
+          </div>
+
+          {imageError && <p className="pnlcard-menu-error">{imageError}</p>}
+        </div>
+      )}
 
       {/* Purely the corner affordance — the gesture belongs to the card's own handler. */}
       <div className="pnlcard-grip" aria-hidden="true" />

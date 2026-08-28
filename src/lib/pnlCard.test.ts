@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  PNL_IMAGE_MAX_EDGE,
   PNL_DEFAULT,
   PNL_MAX_HEIGHT,
   PNL_MAX_WIDTH,
@@ -7,6 +8,8 @@ import {
   PNL_MIN_WIDTH,
   clampGeometry,
   dragGeometry,
+  fitWithin,
+  isImageDataUrl,
   sanitizePnlSettings,
 } from '~/lib/pnlCard'
 
@@ -30,6 +33,14 @@ describe('sanitizePnlSettings', () => {
     expect(sanitizePnlSettings({ baselineUsd: 0 }).baselineUsd).toBe(0)
     expect(sanitizePnlSettings({ baselineUsd: -12.5 }).baselineUsd).toBe(-12.5)
     expect(sanitizePnlSettings({}).baselineUsd).toBeNull()
+  })
+
+  it('clamps opacity to 0-100 and defaults a record written before it existed', () => {
+    expect(sanitizePnlSettings({}).opacity).toBe(100)
+    expect(sanitizePnlSettings({ opacity: 42.4 }).opacity).toBe(42)
+    expect(sanitizePnlSettings({ opacity: -30 }).opacity).toBe(0)
+    expect(sanitizePnlSettings({ opacity: 900 }).opacity).toBe(100)
+    expect(sanitizePnlSettings({ opacity: 'half' }).opacity).toBe(100)
   })
 
   it('treats a record written before the flag existed as enabled', () => {
@@ -88,5 +99,32 @@ describe('dragGeometry', () => {
     const grown = dragGeometry('resize', start, 9_000, 9_000)
     expect(grown.width).toBe(PNL_MAX_WIDTH)
     expect(grown.height).toBe(PNL_MAX_HEIGHT)
+  })
+})
+
+describe('fitWithin', () => {
+  it('scales the longest side down to the limit, keeping the ratio', () => {
+    expect(fitWithin(1_600, 900, PNL_IMAGE_MAX_EDGE)).toEqual({ width: 720, height: 405 })
+    expect(fitWithin(900, 1_600, PNL_IMAGE_MAX_EDGE)).toEqual({ width: 405, height: 720 })
+  })
+
+  it('never scales a small image up, and never rounds an edge away', () => {
+    expect(fitWithin(320, 200, PNL_IMAGE_MAX_EDGE)).toEqual({ width: 320, height: 200 })
+    expect(fitWithin(4_000, 3, PNL_IMAGE_MAX_EDGE)).toEqual({ width: 720, height: 1 })
+  })
+})
+
+describe('isImageDataUrl', () => {
+  it('accepts the encodings the card stores', () => {
+    expect(isImageDataUrl('data:image/webp;base64,UklGRh4AAABXRUJQ')).toBe(true)
+    expect(isImageDataUrl('data:image/png;base64,iVBORw0KGgo=')).toBe(true)
+  })
+
+  it('rejects anything that is not one — a card renders this straight into a url()', () => {
+    expect(isImageDataUrl('https://example.com/pic.png')).toBe(false)
+    expect(isImageDataUrl('data:text/html;base64,PHNjcmlwdD4=')).toBe(false)
+    expect(isImageDataUrl('data:image/png;base64,abc") ; background: red; x: url("')).toBe(false)
+    expect(isImageDataUrl(undefined)).toBe(false)
+    expect(isImageDataUrl(42)).toBe(false)
   })
 })

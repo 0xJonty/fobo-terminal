@@ -30,10 +30,16 @@ export interface PnlCardGeometry {
   height: number
 }
 
-/** Everything the card itself owns and writes: where it sits and what it counts from. */
+/** Everything the card itself owns and writes: where it sits, what it counts from, how it looks. */
 export interface PnlCardState extends PnlCardGeometry {
   /** The balance the PnL counts from; null until the first reading seeds it. */
   baselineUsd: number | null
+  /**
+   * How solid the card's FILL is, 0-100. The frame and the numbers keep their own opacity —
+   * a readout you cannot read is not a setting anyone wants, and a card faded to nothing
+   * would take its own settings control with it.
+   */
+  opacity: number
 }
 
 export interface PnlCardSettings extends PnlCardState {
@@ -57,6 +63,7 @@ export const PNL_DEFAULT: PnlCardSettings = {
   width: 260,
   height: 68,
   baselineUsd: null,
+  opacity: 100,
   enabled: true,
 }
 
@@ -78,6 +85,7 @@ export function sanitizePnlSettings(raw: unknown): PnlCardSettings {
     height: Math.round(clamp(finiteOr(row.height, PNL_DEFAULT.height), PNL_MIN_HEIGHT, PNL_MAX_HEIGHT)),
     baselineUsd:
       typeof row.baselineUsd === 'number' && Number.isFinite(row.baselineUsd) ? row.baselineUsd : null,
+    opacity: Math.round(clamp(finiteOr(row.opacity, PNL_DEFAULT.opacity), 0, 100)),
     // Absent means on: the card shipped before this flag existed, and an upgrade must not
     // silently hide it.
     enabled: row.enabled !== false,
@@ -171,6 +179,80 @@ export async function savePnlEnabled(enabled: boolean): Promise<PnlCardSettings>
     /* context already gone */
   }
   return next
+}
+
+/* ---------------------------------------------------------------- the card's own image */
+
+/**
+ * The background image lives in chrome.storage.LOCAL, not sync: sync caps a single item at
+ * 8 KB, which even a small picture blows through, and an image is a per-machine decoration
+ * rather than a preference worth following the profile around. Absent means the default.
+ */
+export const PNL_IMAGE_KEY = 'fobo:pnl-image'
+
+/** Anything a card-sized background needs; the rest is bytes for nothing. */
+export const PNL_IMAGE_MAX_EDGE = 720
+
+/** A stored image past this is refused rather than silently filling the local quota. */
+export const PNL_IMAGE_MAX_BYTES = 400_000
+
+/** Scale to fit inside `maxEdge` on the longest side, never up. */
+export function fitWithin(width: number, height: number, maxEdge: number): { width: number; height: number } {
+  const longest = Math.max(width, height)
+  const scale = longest > maxEdge ? maxEdge / longest : 1
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
+}
+
+/** True for the data: URLs this module produces and stores — the only thing the card renders. */
+export function isImageDataUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^data:image\/(png|jpeg|webp|gif|avif);base64,[A-Za-z0-9+/=]+$/.test(value)
+}
+
+export async function readPnlImage(): Promise<string | null> {
+  try {
+    const stored = await withTimeout(chrome.storage.local.get(PNL_IMAGE_KEY), STORAGE_READ_TIMEOUT_MS, {})
+    const value = (stored as Record<string, unknown>)[PNL_IMAGE_KEY]
+    return isImageDataUrl(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+export async function savePnlImage(dataUrl: string): Promise<void> {
+  await chrome.storage.local.set({ [PNL_IMAGE_KEY]: dataUrl })
+}
+
+export async function clearPnlImage(): Promise<void> {
+  try {
+    await chrome.storage.local.remove(PNL_IMAGE_KEY)
+  } catch {
+    /* context already gone */
+  }
+}
+
+/**
+ * A picked file, downscaled and re-encoded to something a card can carry. Throws with a
+ * message meant for the user — the caller shows it next to the control they just used.
+ */
+export async function importPnlImage(file: File): Promise<string> {
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch {
+    throw new Error('That file is not an image the browser can read.')
+  }
+  const { width, height } = fitWithin(bitmap.width, bitmap.height, PNL_IMAGE_MAX_EDGE)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('The browser would not give fobo a canvas to resize that image.')
+  context.drawImage(bitmap, 0, 0, width, height)
+  bitmap.close()
+  const dataUrl = canvas.toDataURL('image/webp', 0.85)
+  if (!isImageDataUrl(dataUrl)) throw new Error('That image could not be re-encoded.')
+  if (dataUrl.length > PNL_IMAGE_MAX_BYTES) throw new Error('That image is too detailed to store — try a smaller one.')
+  return dataUrl
 }
 
 /** Watch the record (the popup toggling the card on or off). Returns an unsubscribe. */
