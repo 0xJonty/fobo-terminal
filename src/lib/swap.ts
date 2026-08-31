@@ -218,15 +218,57 @@ function solanaFields(
 }
 
 /**
- * fomo's own error text where it is short enough to read on a button, and a status code
- * otherwise — its simulation failures arrive as multi-kilobyte program logs.
+ * A sentence a person can act on, out of whatever the server sent.
+ *
+ * A reverted simulation arrives as six kilobytes of Solana program log with the actual reason
+ * buried in one line of it. This used to collapse the whole thing to "Swap simulation failed",
+ * which told the user nothing — the reason is in there and is worth digging out.
  */
-function quoteError(body: SwapEnvelope, status: number): string {
-  const message = body.message?.trim()
-  if (message && message.length <= 120) return message
+export function quoteError(body: SwapEnvelope, status: number): string {
   if (status === 401 || status === 403) return 'Signed out of fomo'
-  if (message) return 'Swap simulation failed'
-  return `Quote failed (${status})`
+
+  const message = body.message?.trim()
+  if (!message) return `Quote failed (${status})`
+
+  // Short server messages are already written for people ("below minimum $2.00").
+  if (message.length <= 120) return message
+
+  const reverted = revertReason(message)
+  if (reverted) return reverted
+  return 'The swap could not be built — try again'
+}
+
+/**
+ * The programs' own words, pulled out of the log. Anchor prints `Error Message: <text>.` and the
+ * SPL token program prints `Error: insufficient funds`; those two cover what a buy actually hits.
+ *
+ * A note on slippage here, because it is the confusing one: an account with no cash fails this
+ * way too. The route computes an output of nothing, and the program reports that as a slippage
+ * limit rather than as an empty wallet — which is exactly why the caller checks the cash balance
+ * BEFORE asking (see hasEnoughCash), so this message is only ever reached by a real one.
+ */
+function revertReason(message: string): string | null {
+  if (/insufficient funds/i.test(message)) return 'Not enough cash for this swap'
+
+  const anchor = /Error Message: ([^"\\]{3,80}?)\.?"/.exec(message)
+  if (anchor) {
+    const text = anchor[1]!.trim()
+    if (/slippage/i.test(text)) return 'Slippage limit exceeded — try again or use a larger amount'
+    return text
+  }
+  if (/slippage/i.test(message)) return 'Slippage limit exceeded — try again or use a larger amount'
+  return null
+}
+
+/**
+ * Whether the known cash covers the amount, when the cash figure is known at all.
+ *
+ * Returns null when balances have not loaded — an unknown balance must never block a buy; the
+ * server is the authority and gets to say no itself.
+ */
+export function hasEnoughCash(cashUsd: number | undefined, amountUsd: number): boolean | null {
+  if (cashUsd === undefined) return null
+  return cashUsd >= amountUsd
 }
 
 export type SubmitResult =

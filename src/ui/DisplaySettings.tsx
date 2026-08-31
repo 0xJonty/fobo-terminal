@@ -130,9 +130,9 @@ export function DisplaySettings({
           <section className="dset-section">
             <div className="dset-section-label">Quick buy</div>
             <p className="dset-hint">
-              Spends the same USDC cash the site&apos;s own trade panel spends. Its server builds,
-              prices and fees every swap; a token on another chain is delivered by Relay, and the
-              button waits for that too before it says filled.
+              One click buys — no confirmation step. Spends the same USDC cash the site&apos;s own
+              trade panel spends; its server builds, prices and fees every swap, and the button
+              waits for the chain (and Relay, for a token on another chain) before it says filled.
             </p>
 
             <div className="dset-row">
@@ -168,18 +168,6 @@ export function DisplaySettings({
                 onBlur={() => setAmountText(String(settings.quickBuyAmountUsd))}
               />
             </div>
-
-            <label className="dset-row dset-row-toggle">
-              <span className="dset-row-label">
-                Confirm before buying
-                <span className="dset-row-hint">First click arms, second click spends</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={settings.quickBuyConfirm}
-                onChange={(event) => onChange({ ...settings, quickBuyConfirm: event.target.checked })}
-              />
-            </label>
           </section>
         </div>
 

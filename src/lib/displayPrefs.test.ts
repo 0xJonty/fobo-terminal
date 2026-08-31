@@ -16,7 +16,6 @@ describe('sanitizeDisplaySettings', () => {
       expect(settings.quickBuySize).toBe(DISPLAY_DEFAULT.quickBuySize)
       expect(settings.quickBuyAmountUsd).toBe(DISPLAY_DEFAULT.quickBuyAmountUsd)
       expect(settings.quickBuyAmountByList).toEqual({})
-      expect(settings.quickBuyConfirm).toBe(true)
     }
   })
 

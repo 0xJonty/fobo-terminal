@@ -1114,6 +1114,78 @@
   to { transform: rotate(360deg); }
 }
 
+/* ---------- notifications ---------- */
+
+/*
+ * Centred and dropping down from the top. Above the PnL card (80) and the Display settings
+ * dialog (90): a buy that failed outranks anything else on screen at the moment it happens.
+ * pointer-events are off on the stack so it never blocks a click on the column beneath it —
+ * only the cards themselves take the cursor.
+ */
+.toasts {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  width: max-content;
+  max-width: min(34rem, calc(100% - 2rem));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border: 1px solid var(--fobo-border-soft);
+  border-radius: var(--fobo-radius);
+  background: var(--fobo-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  pointer-events: auto;
+  animation: fobo-drop 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.toast[data-kind='error'] {
+  border-color: color-mix(in srgb, var(--fobo-red) 55%, transparent);
+  background: color-mix(in srgb, var(--fobo-red) 12%, var(--fobo-surface));
+}
+.toast[data-kind='success'] {
+  border-color: color-mix(in srgb, var(--fobo-green) 55%, transparent);
+  background: color-mix(in srgb, var(--fobo-green) 12%, var(--fobo-surface));
+}
+
+.toast-icon { width: 0.875rem; height: 0.875rem; flex-shrink: 0; }
+.toast[data-kind='error'] .toast-icon { color: var(--fobo-red); }
+.toast[data-kind='success'] .toast-icon { color: var(--fobo-green); }
+
+.toast-message { flex: 1; min-width: 0; }
+
+.toast-close {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--fobo-text-3);
+  cursor: pointer;
+}
+.toast-close:hover { background: var(--fobo-surface-2); color: var(--fobo-text); }
+
+@keyframes fobo-drop {
+  from { opacity: 0; transform: translateY(-0.75rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ---------- per-column quick buy amount ---------- */
 
 .colamt {
@@ -1320,6 +1392,7 @@
 @media (prefers-reduced-motion: reduce) {
   .row[data-fresh='true'],
   .qbuy-spin,
+  .toast,
   .skeleton-block { animation: none; }
 }
 

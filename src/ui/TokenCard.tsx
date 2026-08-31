@@ -227,7 +227,6 @@ export const TokenCard = memo(function TokenCard({
             token={token}
             size={display.quickBuySize}
             amountUsd={amountForList(display, list)}
-            confirm={display.quickBuyConfirm}
           />
         </span>
       )}

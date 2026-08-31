@@ -93,11 +93,6 @@ export interface DisplaySettings {
    * the box is per column rather than one figure in this dialog.
    */
   quickBuyAmountByList: Partial<Record<ListKey, number>>
-  /**
-   * Whether a click arms the button and a second one spends. On by default: this is real
-   * money on a row that moves under the cursor, and the columns are dense.
-   */
-  quickBuyConfirm: boolean
 }
 
 function allFields(value: boolean): Record<CardField, boolean> {
@@ -109,7 +104,6 @@ export const DISPLAY_DEFAULT: DisplaySettings = {
   quickBuySize: 'medium',
   quickBuyAmountUsd: 10,
   quickBuyAmountByList: {},
-  quickBuyConfirm: true,
 }
 
 /** Clamp one amount the way both the dialog and the per-column boxes must. */
@@ -164,7 +158,6 @@ export function sanitizeDisplaySettings(raw: unknown): DisplaySettings {
       : DISPLAY_DEFAULT.quickBuySize,
     quickBuyAmountUsd: clampAmount(amount),
     quickBuyAmountByList,
-    quickBuyConfirm: row.quickBuyConfirm !== false,
   }
 }
 

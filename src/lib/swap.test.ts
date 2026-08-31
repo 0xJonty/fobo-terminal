@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { canQuickBuy, quoteBuy, SWAP_MIN_USD, usdToBaseUnits, USDC_SOL_TOKEN_ID } from '~/lib/swap'
+import {
+  canQuickBuy,
+  hasEnoughCash,
+  quoteBuy,
+  SWAP_MIN_USD,
+  usdToBaseUnits,
+  USDC_SOL_TOKEN_ID,
+} from '~/lib/swap'
 import type { Token } from '~/types/token'
 
 function token(overrides: Partial<Token> = {}): Token {
@@ -149,9 +156,44 @@ describe('quoteBuy errors', () => {
     })
   })
 
-  it('collapses a multi-kilobyte simulation dump to something readable', async () => {
+  /**
+   * The real 422 seen in use: six kilobytes of program log with the reason on one line of it.
+   * Reported verbatim it is unreadable; collapsed to "simulation failed" it is useless. The
+   * program's own sentence is the thing worth surfacing.
+   */
+  it("digs the program's own reason out of a reverted simulation", async () => {
+    const log = [
+      'Swap simulation reverted on-chain: dflow_creator_rewards_bps: Error: ',
+      '{"InstructionError":["2",{"Custom":"15001"}]}, # of accounts: ,, logs: [',
+      '"Program ComputeBudget111111111111111111111111111111 invoke [1]",',
+      '"Program log: Instruction: Swap",',
+      `"${'Program log: filler '.repeat(200)}",`,
+      '"Program log: AnchorError occurred. Error Code: SlippageLimitExceeded. Error Number: ',
+      '15001. Error Message: Slippage limit exceeded.",',
+      '"Program DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH failed: custom program error: 0x3a99"]',
+    ].join('')
+    reply({ success: false, errorCode: 'ERR_SWAP_SIMULATION_REVERTED', message: log }, 422)
+    expect(await quoteBuy(token(), 10)).toEqual({
+      ok: false,
+      message: 'Slippage limit exceeded — try again or use a larger amount',
+    })
+  })
+
+  it('names an empty wallet when the log actually says so', async () => {
+    const log = `Swap simulation reverted on-chain: ${'y'.repeat(3000)} Program log: Error: insufficient funds ${'z'.repeat(1000)}`
+    reply({ success: false, message: log }, 422)
+    expect(await quoteBuy(token(), 10)).toEqual({
+      ok: false,
+      message: 'Not enough cash for this swap',
+    })
+  })
+
+  it('falls back to a plain sentence when the log says nothing recognisable', async () => {
     reply({ success: false, message: `Swap simulation reverted on-chain: ${'x'.repeat(4000)}` }, 422)
-    expect(await quoteBuy(token(), 10)).toEqual({ ok: false, message: 'Swap simulation failed' })
+    expect(await quoteBuy(token(), 10)).toEqual({
+      ok: false,
+      message: 'The swap could not be built — try again',
+    })
   })
 
   it('names an expired session rather than a status code', async () => {
@@ -171,6 +213,16 @@ describe('canQuickBuy', () => {
       expect(canQuickBuy(token({ networkId }))).toBe(true)
     }
     expect(canQuickBuy(token({ networkId: 999999 }))).toBe(false)
+  })
+})
+
+describe('hasEnoughCash', () => {
+  it('blocks only when the shortfall is known', () => {
+    expect(hasEnoughCash(0.006, 10)).toBe(false)
+    expect(hasEnoughCash(10, 10)).toBe(true)
+    expect(hasEnoughCash(25, 10)).toBe(true)
+    // Balances not loaded: the server is the authority, so the buy goes ahead and it decides.
+    expect(hasEnoughCash(undefined, 10)).toBeNull()
   })
 })
 

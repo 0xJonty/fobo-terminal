@@ -115,21 +115,23 @@ no price and takes no cut.
 - **A per-column amount** sits beside each column's filter button: small on Bonding, larger on
   Trending, without opening anything. A column you leave alone follows the default in Display
   settings, and so do watchlist cards.
-- **Confirms by default.** The first click arms, the second spends. Rows move under the cursor,
-  so this is on until you turn it off in Display settings.
+- **One click.** No arming step, no dialog — that is the point of it. What it does instead is
+  refuse to spend what you do not have: the cash balance is checked before anything is sent, so
+  an empty wallet says so rather than failing somewhere on chain.
 - **It waits for the chain before saying "filled."** Submitted is "Sent"; the button then polls
   the deposit's signature status and, for a cross-chain buy, Relay's own request status. Only
-  both together turn it green. A revert, a slippage failure or a refund turns it red and says
-  which — and the transaction id is on the tooltip throughout.
+  both together turn it green, and the transaction id is on the tooltip throughout. Anything
+  that goes wrong is announced as a notification over the middle of the terminal, not squeezed
+  onto the button.
 
 ## Display settings
 
 **Display settings** in the toolbar popup opens a dialog over the terminal. Every data point a
 card can draw — chain icon, name, market cap, age, holders, top-10 share, dev holdings, volume,
 liquidity, 24h change, trade count, pressure bar, bonding bar, and the quick buy button — is a
-switch, and cards restyle as you flip them. Quick buy's button size (small / medium / large),
-default amount and confirm step live in the same dialog; per-column amounts live beside each
-column's own filter button. A field switched on still shows nothing when the row does not carry
+switch, and cards restyle as you flip them. Quick buy's button size (small / medium / large)
+and default amount live in the same dialog; per-column amounts live beside each column's own
+filter button. A field switched on still shows nothing when the row does not carry
 it: the switches choose what *may* be drawn, never invent a number.
 
 ## Everything else that's in there
@@ -221,7 +223,7 @@ behind Cloudflare bot management that rejects non-browser clients; a service-wor
   builds, prices, fees and simulates, and which fomo's own wallet — already loaded in the page —
   signs. Deposit, withdraw and account actions still hand off to fomo's UI.
 - **Quick buy** is off the same USDC cash rail fomo's trade panel spends, for an amount you set
-  per column. It confirms by default. See [Quick buy](#quick-buy).
+  per column, on one click. See [Quick buy](#quick-buy).
 - Profile pages and coin pages are left exactly as fomo ships them.
 - The terminal is rendered into a **closed** shadow root on a sibling element and opens its own
   API connection, so it never patches `fetch`, `WebSocket`, or React's DOM — and fomo's scripts

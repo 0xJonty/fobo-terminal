@@ -65,8 +65,8 @@ How it works
 • Preferences (panel side and width, alert sound, column filters, and which data points each
   card shows) are saved to your Chrome profile.
 • Quick buy asks the wallet already loaded on the page to approve one transaction per click.
-  No key is held, read or stored, and the amount is yours to set per column — it confirms by
-  default, and reports the outcome rather than assuming it.
+  No key is held, read or stored, the amount is yours to set per column, and the result is
+  reported rather than assumed.
 • The toolbar icon toggles the terminal, Esc dismisses it, and a small button restores it.
 
 Not affiliated with, endorsed by or maintained by fomo.family. Uses its public web API under
@@ -109,7 +109,7 @@ your own account; if that API changes, features may degrade until updated.
 **Permission justifications**:
 - `storage`: "Saves the user's preferences: terminal on/off, panel side and width, alert
   sound, per-column filter/sort settings, which data points each token card shows, and the
-  quick buy amounts (a default plus any per-column ones), button size and confirm setting."
+  quick buy amounts (a default plus any per-column ones) and button size."
 - `scripting`: "Quick buy only. The site builds and signs the swap on its server; the user's own
   signature has to come from the wallet the site has already loaded into its page, which a
   content script in an isolated world cannot reach. On each click the extension injects one

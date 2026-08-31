@@ -30,7 +30,7 @@ inside fomo.family's own page code is described under "Quick buy" below.
 - **Preferences only**, in Chrome's extension storage (`chrome.storage.sync`): whether the
   terminal is on, panel side and width, alert-sound on/off, your per-column filters and sort,
   which data points each token card shows, and your quick buy amounts (a default plus any
-  per-column ones), button size and confirm setting. These sync with your Chrome profile if you have Chrome sync enabled. No account
+  per-column ones) and button size. These sync with your Chrome profile if you have Chrome sync enabled. No account
   data, tokens, keys or financial data are ever written to storage.
 - A few **tab-scoped flags** in the page's session storage (which page the terminal was
   summoned on, whether you dismissed it). These vanish when the tab closes.
@@ -57,7 +57,7 @@ remote code.
 ## Quick buy
 
 Quick buy places a market buy on fomo.family, using your account there, when you click the
-button on a card (twice, unless you switch the confirmation off). It works like this:
+button on a card. It works like this:
 
 - fomo.family's **own server** builds the transaction, prices it, applies its own fee and
   simulates it. The extension chooses nothing about the trade except the token and the amount
