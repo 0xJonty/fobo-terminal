@@ -62,8 +62,8 @@ How it works
 • Reads the site's own API and websocket — the same data its pages show, nothing invented.
 • Holder metrics come from Mobula's public Pulse endpoint; every other number comes from
   the site itself.
-• Preferences (panel side and width, alert sound, column filters, and which data points each
-  card shows) are saved to your Chrome profile.
+• Preferences (which columns show, panel side and width, alert sound, column filters, and which
+  data points each card shows) are saved to your Chrome profile.
 • Quick buy asks the wallet already loaded on the page to approve one transaction per click.
   No key is held, read or stored, the amount is yours to set per column, and the result is
   reported rather than assumed.
@@ -107,9 +107,9 @@ your own account; if that API changes, features may degrade until updated.
 `Adds a live token-list home screen (Bonding / Graduated / Trending, alerts, watchlist, feed) to fomo.family pages, with a per-card quick buy that places an order through that site's own trade API, using the session the user is already logged into.`
 
 **Permission justifications**:
-- `storage`: "Saves the user's preferences: terminal on/off, panel side and width, alert
-  sound, per-column filter/sort settings, which data points each token card shows, and the
-  quick buy amounts (a default plus any per-column ones) and button size."
+- `storage`: "Saves the user's preferences: terminal on/off, which columns show, panel side and
+  width, alert sound, per-column filter/sort settings, which data points each token card shows,
+  and the quick buy amounts (a default plus any per-column ones) and button size."
 - `scripting`: "Quick buy only. The site builds and signs the swap on its server; the user's own
   signature has to come from the wallet the site has already loaded into its page, which a
   content script in an isolated world cannot reach. On each click the extension injects one

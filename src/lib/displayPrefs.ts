@@ -81,6 +81,14 @@ export const QUICK_BUY_MAX_USD = 10_000
 
 export interface DisplaySettings {
   fields: Record<CardField, boolean>
+  /**
+   * Which of the three token columns are shown, keyed by list. The side panel is a fourth
+   * column the dialog also toggles, but its on/off flag lives in the panel's own settings
+   * (settings.ts) — this map covers only the columns App renders from LIST_KEYS. Every column
+   * defaults ON; at least one column (including the panel) must stay visible, enforced by the
+   * dialog and, as a last resort, by App's render.
+   */
+  columns: Record<ListKey, boolean>
   quickBuySize: QuickBuySize
   /**
    * The default USD of cash spent per click, used by any column without its own amount and by
@@ -99,11 +107,21 @@ function allFields(value: boolean): Record<CardField, boolean> {
   return Object.fromEntries(CARD_FIELDS.map((field) => [field, value])) as Record<CardField, boolean>
 }
 
+function allColumns(value: boolean): Record<ListKey, boolean> {
+  return Object.fromEntries(LIST_KEYS.map((list) => [list, value])) as Record<ListKey, boolean>
+}
+
 export const DISPLAY_DEFAULT: DisplaySettings = {
   fields: allFields(true),
+  columns: allColumns(true),
   quickBuySize: 'medium',
   quickBuyAmountUsd: 10,
   quickBuyAmountByList: {},
+}
+
+/** The token columns App should render, in LIST_KEYS order. Never used to force a minimum. */
+export function enabledColumns(settings: DisplaySettings): ListKey[] {
+  return LIST_KEYS.filter((list) => settings.columns[list])
 }
 
 /** Clamp one amount the way both the dialog and the per-column boxes must. */
@@ -133,6 +151,14 @@ export function sanitizeDisplaySettings(raw: unknown): DisplaySettings {
   const fields = allFields(true)
   for (const field of CARD_FIELDS) fields[field] = storedFields[field] !== false
 
+  const storedColumns = (
+    typeof row.columns === 'object' && row.columns !== null ? row.columns : {}
+  ) as Record<string, unknown>
+  const columns = allColumns(true)
+  // Default-on, like the fields: a payload written before a column existed must not hide it,
+  // and a corrupt map can never blank every column — only an explicit `false` turns one off.
+  for (const list of LIST_KEYS) columns[list] = storedColumns[list] !== false
+
   const amount =
     typeof row.quickBuyAmountUsd === 'number' && Number.isFinite(row.quickBuyAmountUsd)
       ? row.quickBuyAmountUsd
@@ -153,6 +179,7 @@ export function sanitizeDisplaySettings(raw: unknown): DisplaySettings {
 
   return {
     fields,
+    columns,
     quickBuySize: QUICK_BUY_SIZES.includes(row.quickBuySize as QuickBuySize)
       ? (row.quickBuySize as QuickBuySize)
       : DISPLAY_DEFAULT.quickBuySize,

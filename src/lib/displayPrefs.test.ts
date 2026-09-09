@@ -3,9 +3,11 @@ import {
   amountForList,
   CARD_FIELDS,
   DISPLAY_DEFAULT,
+  enabledColumns,
   QUICK_BUY_MAX_USD,
   sanitizeDisplaySettings,
 } from '~/lib/displayPrefs'
+import { LIST_KEYS } from '~/lib/protocol'
 import { SWAP_MIN_USD } from '~/lib/swap'
 
 describe('sanitizeDisplaySettings', () => {
@@ -73,5 +75,30 @@ describe('per-column amounts', () => {
     expect(amountForList(settings, 'graduated')).toBe(10)
     // No column at all — a watchlist card.
     expect(amountForList(settings, undefined)).toBe(10)
+  })
+})
+
+describe('column visibility', () => {
+  it('defaults every column on', () => {
+    for (const raw of [undefined, null, 'nonsense', 42, []]) {
+      const settings = sanitizeDisplaySettings(raw)
+      for (const list of LIST_KEYS) expect(settings.columns[list]).toBe(true)
+    }
+    for (const list of LIST_KEYS) expect(DISPLAY_DEFAULT.columns[list]).toBe(true)
+  })
+
+  it('honours an explicit false, treats an absent or non-boolean column as shown', () => {
+    // A payload written before a column existed, or a corrupt map, must not hide anything;
+    // only an explicit `false` turns a column off.
+    const settings = sanitizeDisplaySettings({ columns: { graduated: false, trending: 'nope' } })
+    expect(settings.columns.graduated).toBe(false)
+    expect(settings.columns.trending).toBe(true)
+    expect(settings.columns['pre-graduated']).toBe(true)
+  })
+
+  it('lists enabled columns in LIST_KEYS order', () => {
+    const settings = sanitizeDisplaySettings({ columns: { graduated: false } })
+    expect(enabledColumns(settings)).toEqual(['pre-graduated', 'trending'])
+    expect(enabledColumns(sanitizeDisplaySettings({}))).toEqual([...LIST_KEYS])
   })
 })

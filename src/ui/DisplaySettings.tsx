@@ -12,6 +12,7 @@ import {
   type DisplaySettings as DisplaySettingsValue,
 } from '~/lib/displayPrefs'
 import { HIDDEN_EVENT } from '~/lib/host'
+import { LIST_KEYS, LIST_LABEL, type ListKey } from '~/lib/protocol'
 import { SWAP_MIN_USD } from '~/lib/swap'
 
 /**
@@ -32,10 +33,15 @@ function clamp(value: number, min: number, max: number): number {
 export function DisplaySettings({
   settings,
   onChange,
+  panelEnabled,
+  onPanelChange,
   onClose,
 }: {
   settings: DisplaySettingsValue
   onChange: (next: DisplaySettingsValue) => void
+  /** The side panel is the fourth column; its flag lives in the panel's own settings store. */
+  panelEnabled: boolean
+  onPanelChange: (on: boolean) => void
   onClose: () => void
 }) {
   // The amount is a raw string while it is being typed, so "1", "1." and an emptied box all
@@ -57,6 +63,18 @@ export function DisplaySettings({
 
   const setField = (field: CardField, on: boolean) => {
     onChange({ ...settings, fields: { ...settings.fields, [field]: on } })
+  }
+
+  // The three token columns plus the side panel are one set: at least one must stay visible.
+  // The switch of whichever is the last one on is disabled, so the terminal can never go blank.
+  const shownCount = LIST_KEYS.filter((list) => settings.columns[list]).length + (panelEnabled ? 1 : 0)
+  const setColumn = (list: ListKey, on: boolean) => {
+    if (!on && settings.columns[list] && shownCount === 1) return
+    onChange({ ...settings, columns: { ...settings.columns, [list]: on } })
+  }
+  const setPanel = (on: boolean) => {
+    if (!on && panelEnabled && shownCount === 1) return
+    onPanelChange(on)
   }
 
   const commitAmount = (raw: string) => {
@@ -102,6 +120,42 @@ export function DisplaySettings({
         </header>
 
         <div className="dset-body">
+          <section className="dset-section">
+            <div className="dset-section-label">Columns</div>
+            <p className="dset-hint">
+              The columns share the width equally — one fills the terminal, two split it in half.
+              At least one stays visible.
+            </p>
+            <div className="dset-fields">
+              {LIST_KEYS.map((list) => {
+                const on = settings.columns[list]
+                return (
+                  <label className="dset-field" key={list}>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={on && shownCount === 1}
+                      onChange={(event) => setColumn(list, event.target.checked)}
+                    />
+                    <span className="dset-field-label">{LIST_LABEL[list]}</span>
+                  </label>
+                )
+              })}
+              <label className="dset-field">
+                <input
+                  type="checkbox"
+                  checked={panelEnabled}
+                  disabled={panelEnabled && shownCount === 1}
+                  onChange={(event) => setPanel(event.target.checked)}
+                />
+                <span className="dset-field-label">
+                  Side panel
+                  <span className="dset-field-hint">Alerts, watchlist and feed</span>
+                </span>
+              </label>
+            </div>
+          </section>
+
           <section className="dset-section">
             <div className="dset-section-label">Token card</div>
             <p className="dset-hint">

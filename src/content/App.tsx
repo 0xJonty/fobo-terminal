@@ -250,6 +250,18 @@ export function App({
     })
   }, [])
 
+  // The Display settings dialog treats the panel as the fourth column, but its on/off flag lives
+  // here with the rest of the panel settings — same store the popup toggle writes, so both stay
+  // in step. Ignored until the settings have loaded; the dialog cannot open before they have.
+  const changePanelEnabled = useCallback((enabled: boolean) => {
+    setAlertsSettings((current) => {
+      if (!current) return current
+      const next = { ...current, enabled }
+      saveAlertsSettings(next)
+      return next
+    })
+  }, [])
+
   /** The raw filter strings parsed to the numbers fomo's endpoint takes ("1k" -> 1000). */
   const alertsFilters = useMemo<AlertsFilters>(() => {
     const raw = alertsSettings?.alertsFilters
@@ -615,6 +627,12 @@ export function App({
 
   const totalRows = LIST_KEYS.reduce((sum, key) => sum + lists[key].length, 0)
 
+  // Which token columns to draw. The dialog keeps at least one of the four (three columns plus
+  // the panel) on, but the popup can still switch the panel off on its own — so if that would
+  // leave nothing at all on screen, fall back to every column rather than a blank terminal.
+  const chosenCols = LIST_KEYS.filter((key) => displaySettings.columns[key])
+  const visibleCols = chosenCols.length > 0 ? chosenCols : panelEnabled ? [] : LIST_KEYS
+
   return (
     <div className="shell">
       <TopBar onNavigate={onOpen} onDeposit={onDeposit} onHeaderAction={onHeaderAction} />
@@ -653,24 +671,29 @@ export function App({
             />
           </div>
         )}
-        <div className="columns">
-          {LIST_KEYS.map((key) => (
-            <Column
-              key={key}
-              list={key}
-              title={LIST_LABEL[key]}
-              tokens={enriched[key]}
-              total={lists[key].length}
-              loading={totalRows === 0 && status !== 'unauthenticated'}
-              stale={stale}
-              showBond={key === 'pre-graduated'}
-              freshKeys={freshKeys}
-              prefs={colPrefs[key]}
-              onPrefsChange={(next) => changePrefs(key, next)}
-              onOpen={open}
-            />
-          ))}
-        </div>
+        {visibleCols.length > 0 && (
+          <div
+            className="columns"
+            style={{ gridTemplateColumns: `repeat(${visibleCols.length}, minmax(0, 1fr))` }}
+          >
+            {visibleCols.map((key) => (
+              <Column
+                key={key}
+                list={key}
+                title={LIST_LABEL[key]}
+                tokens={enriched[key]}
+                total={lists[key].length}
+                loading={totalRows === 0 && status !== 'unauthenticated'}
+                stale={stale}
+                showBond={key === 'pre-graduated'}
+                freshKeys={freshKeys}
+                prefs={colPrefs[key]}
+                onPrefsChange={(next) => changePrefs(key, next)}
+                onOpen={open}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <BottomBar onNavigate={onOpen} />
@@ -686,6 +709,8 @@ export function App({
         <DisplaySettingsDialog
           settings={displaySettings}
           onChange={displayStore.set}
+          panelEnabled={panelEnabled}
+          onPanelChange={changePanelEnabled}
           onClose={() => setDisplayOpen(false)}
         />
       )}

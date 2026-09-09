@@ -126,13 +126,15 @@ no price and takes no cut.
 
 ## Display settings
 
-**Display settings** in the toolbar popup opens a dialog over the terminal. Every data point a
-card can draw — chain icon, name, market cap, age, holders, top-10 share, dev holdings, volume,
-liquidity, 24h change, trade count, pressure bar, bonding bar, and the quick buy button — is a
-switch, and cards restyle as you flip them. Quick buy's button size (small / medium / large)
-and default amount live in the same dialog; per-column amounts live beside each column's own
-filter button. A field switched on still shows nothing when the row does not carry
-it: the switches choose what *may* be drawn, never invent a number.
+**Display settings** in the toolbar popup opens a dialog over the terminal. The four columns —
+Bonding, Graduated, Trending and the side panel — each have a switch; the ones you keep share
+the width equally, so a single column fills the terminal and two split it in half. At least one
+stays on. Every data point a card can draw — chain icon, name, market cap, age, holders, top-10
+share, dev holdings, volume, liquidity, 24h change, trade count, pressure bar, bonding bar, and
+the quick buy button — is a switch too, and cards restyle as you flip them. Quick buy's button
+size (small / medium / large) and default amount live in the same dialog; per-column amounts
+live beside each column's own filter button. A field switched on still shows nothing when the
+row does not carry it: the switches choose what *may* be drawn, never invent a number.
 
 ## Everything else that's in there
 
