@@ -31,6 +31,7 @@ export function SidePanel({
   onViewChange,
   side,
   width,
+  resizable = true,
   onWidthChange,
   onWidthCommit,
   alerts,
@@ -57,6 +58,8 @@ export function SidePanel({
   onViewChange: (view: PanelView) => void
   side: 'left' | 'right'
   width: number
+  /** The panel spans the window when it is the only column, so its edge handle is dropped. */
+  resizable?: boolean
   /** Live width while dragging — state only, no storage write. */
   onWidthChange: (width: number) => void
   /** Drag finished — persist. */
@@ -124,17 +127,19 @@ export function SidePanel({
 
   return (
     <section className="column alerts-panel" aria-label="FOMO Panel">
-      <div
-        className="panel-resize"
-        data-side={side}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize panel"
-        onPointerDown={onHandleDown}
-        onPointerMove={onHandleMove}
-        onPointerUp={onHandleUp}
-        onPointerCancel={onHandleUp}
-      />
+      {resizable && (
+        <div
+          className="panel-resize"
+          data-side={side}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panel"
+          onPointerDown={onHandleDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
+          onPointerCancel={onHandleUp}
+        />
+      )}
 
       <header className="column-header">
         <div className="panelsel" ref={selectRef}>

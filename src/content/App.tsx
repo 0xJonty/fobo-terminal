@@ -632,6 +632,10 @@ export function App({
   // leave nothing at all on screen, fall back to every column rather than a blank terminal.
   const chosenCols = LIST_KEYS.filter((key) => displaySettings.columns[key])
   const visibleCols = chosenCols.length > 0 ? chosenCols : panelEnabled ? [] : LIST_KEYS
+  // The panel is the only column on screen: it spans the window instead of holding its
+  // user-set width against empty space, and its edge handle goes — there is nothing to drag
+  // it against.
+  const panelOnly = panelEnabled && visibleCols.length === 0
 
   return (
     <div className="shell">
@@ -641,12 +645,13 @@ export function App({
 
       <div className="main" data-alerts-side={alertsSettings?.enabled ? alertsSettings.side : undefined}>
         {alertsSettings?.enabled && (
-          <div className="alerts-slot" style={{ width: alertsSettings.width }}>
+          <div className="alerts-slot" style={{ width: panelOnly ? '100%' : alertsSettings.width }}>
             <SidePanel
               view={panelView}
               onViewChange={changeView}
               side={alertsSettings.side}
               width={alertsSettings.width}
+              resizable={!panelOnly}
               onWidthChange={changeWidth}
               onWidthCommit={commitWidth}
               alerts={alerts}
