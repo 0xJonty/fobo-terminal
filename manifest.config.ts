@@ -13,14 +13,7 @@ export default defineManifest({
 
   // Narrow by design: one host, plus storage for preferences. No tabs, no webRequest,
   // no <all_urls>. Every extra permission is a review-time and trust cost.
-  //
-  // `scripting` is quick buy's, and only quick buy's: the buy transaction fomo's server builds
-  // has to be signed by the wallet living in fomo's own JavaScript world, which an isolated
-  // content script cannot reach. One self-contained function is injected per click and returns
-  // its result straight to the extension (src/background/index.ts) — no permanent script in the
-  // page, no page-readable signing channel. It adds no new install warning: the prompt users
-  // see comes from the fomo.family host permission, which is unchanged.
-  permissions: ['storage', 'scripting'],
+  permissions: ['storage'],
   host_permissions: [FOMO],
 
   icons: {

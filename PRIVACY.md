@@ -1,6 +1,6 @@
 # fobo terminal — Privacy Policy
 
-_Last updated: 2026-08-28_
+_Last updated: 2026-09-11_
 
 fobo terminal ("the extension") is an independent browser extension that adds a home-screen
 view to fomo.family. It is not affiliated with, endorsed by, or maintained by fomo.family.
@@ -8,8 +8,7 @@ view to fomo.family. It is not affiliated with, endorsed by, or maintained by fo
 ## What the extension does with data
 
 The extension runs only on pages under `https://fomo.family/`. It does not run anywhere else,
-does not inject code into any other site, and has no server of its own. The one thing it runs
-inside fomo.family's own page code is described under "Quick buy" below.
+does not inject code into other sites, and has no server of its own.
 
 ### Data it reads
 
@@ -28,10 +27,10 @@ inside fomo.family's own page code is described under "Quick buy" below.
 ### Data it stores
 
 - **Preferences only**, in Chrome's extension storage (`chrome.storage.sync`): whether the
-  terminal is on, panel side and width, alert-sound on/off, your per-column filters and sort,
-  which data points each token card shows, and your quick buy amounts (a default plus any
-  per-column ones) and button size. These sync with your Chrome profile if you have Chrome sync enabled. No account
-  data, tokens, keys or financial data are ever written to storage.
+  terminal is on, which columns show, panel side and width, alert-sound on/off, your per-column
+  filters and sort, and which data points each token card shows. These sync with your Chrome
+  profile if you have Chrome sync enabled. No account data, tokens or financial data are ever
+  written to storage.
 - A few **tab-scoped flags** in the page's session storage (which page the terminal was
   summoned on, whether you dismissed it). These vanish when the tab closes.
 
@@ -43,40 +42,9 @@ inside fomo.family's own page code is described under "Quick buy" below.
   fetch holder-concentration metrics for tokens on screen. No account data is sent; Mobula
   receives your IP address and the request itself, as with any web request.
 - **status.fomo.family** — fomo's public status endpoint, for the status dot.
-- **Jito (`mainnet.block-engine.jito.wtf`, `mainnet.hudson.jito.wtf`)** — only when you use
-  quick buy, and only to submit the signed transaction that fomo.family's own server built.
-  These are the same submission endpoints fomo.family's own website uses. Nothing is sent to
-  them except that transaction.
-- **Relay (`api.relay.link`)** — only after a quick buy of a token on a chain other than Solana,
-  and only to ask whether that purchase was filled. The request carries the swap's id and
-  nothing else. This is the same status endpoint fomo.family's own website polls.
 
 Nothing else. The extension contains no analytics, no telemetry, no advertising, and no
 remote code.
-
-## Quick buy
-
-Quick buy places a market buy on fomo.family, using your account there, when you click the
-button on a card. It works like this:
-
-- fomo.family's **own server** builds the transaction, prices it, applies its own fee and
-  simulates it. The extension chooses nothing about the trade except the token and the amount
-  you configured.
-- The transaction has to be signed by your wallet. That wallet is the one fomo.family has
-  already loaded into its own page — the extension does not have one, does not create one, and
-  **never has access to a private key, seed phrase or recovery material of any kind**.
-- To reach that wallet, the extension runs one short, self-contained function inside
-  fomo.family's page for the duration of a single click, and that function asks the wallet to
-  sign. The result comes straight back to the extension. Nothing is left behind in the page
-  between clicks, and this happens on no other site.
-- The signed transaction is then submitted to the endpoints listed above.
-- Afterwards the extension asks whether the purchase succeeded: fomo.family's own Solana node
-  proxy (`solana-provider-1.prod-edge.fomo.family`, using the same session token) for the
-  transaction's status, and for a token on another chain, Relay for whether it was delivered.
-  This is a read; it changes nothing.
-
-No transaction, amount, address or signature is stored by the extension or sent to the
-developer.
 
 ## Data the developer receives
 
@@ -86,9 +54,6 @@ you send by email naturally include whatever you choose to write.
 ## Permissions
 
 - `storage` — to save the preferences listed above.
-- `scripting` — used only by quick buy, to run the signing function described above inside the
-  fomo.family page that requested it. It is not used on any other site, and not used at all if
-  you never press the button.
 - Host access to `https://fomo.family/*` — to run on fomo.family pages and relay the on/off
   toggle to open fomo.family tabs. The extension does not request access to any other site.
 

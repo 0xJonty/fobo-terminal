@@ -5,7 +5,6 @@ import { DisplaySettings as DisplaySettingsDialog } from '~/ui/DisplaySettings'
 import { HoldingsBar } from '~/ui/HoldingsBar'
 import { PnlCard } from '~/ui/PnlCard'
 import { SidePanel } from '~/ui/SidePanel'
-import { Toasts } from '~/ui/Toasts'
 import { TopBar } from '~/ui/TopBar'
 import {
   fetchAlertsPage,
@@ -705,10 +704,6 @@ export function App({
 
       {/* Floats over everything above; last in the DOM so it also paints last. */}
       {pnlEnabled && <PnlCard />}
-
-      {/* Above the card and the dialog both: a failed buy is the most important thing on
-          screen at the moment it happens. */}
-      <Toasts />
 
       {displayOpen && (
         <DisplaySettingsDialog

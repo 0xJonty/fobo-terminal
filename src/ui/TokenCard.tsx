@@ -3,11 +3,8 @@ import { ChefHat, Droplet, UserStar, Users } from 'lucide-react'
 import { BondBar } from '~/ui/BondBar'
 import { ChainIcon } from '~/ui/ChainIcon'
 import { Metric, riskClass } from '~/ui/Metric'
-import { QuickBuy } from '~/ui/QuickBuy'
 import { age, count, percent, share, usd } from '~/lib/format'
-import { amountForList, useDisplaySettings } from '~/lib/displayPrefs'
-import type { ListKey } from '~/lib/protocol'
-import { canQuickBuy } from '~/lib/swap'
+import { useDisplaySettings } from '~/lib/displayPrefs'
 import { tokenPath } from '~/lib/url'
 import type { Token } from '~/types/token'
 
@@ -16,9 +13,8 @@ import type { Token } from '~/types/token'
  * entirely in fomo's design tokens.
  *
  * Every data point on the row can be switched off in Display settings (see lib/displayPrefs.ts);
- * a field switched ON still renders nothing when the row does not carry it. The one control
- * here is quick buy, the only part of the card that is not read-only — it spends that column's
- * own amount (see ui/QuickBuy.tsx). Nothing else reads wallet state.
+ * a field switched ON still renders nothing when the row does not carry it. Read-only by design:
+ * the whole row is a link into fomo's own coin page, and nothing here reads wallet state.
  */
 
 /**
@@ -75,15 +71,11 @@ export const TokenCard = memo(function TokenCard({
   token,
   fresh,
   showBond,
-  list,
   onOpen,
 }: {
   token: Token
   fresh: boolean
   showBond: boolean
-  /** Which column this row sits in, so quick buy can use that column's own amount. Absent in
-   * the watchlist, whose cards spend the default. */
-  list?: ListKey
   onOpen: (token: Token) => void
 }) {
   // Read straight from the shared store rather than through Column and the side panel — the
@@ -213,23 +205,6 @@ export const TokenCard = memo(function TokenCard({
           </span>
         )}
       </span>
-
-      {/*
-        * The button sits INSIDE the row's anchor, which nests interactive content. The
-        * alternative — lifting it out and absolutely positioning it over the row — would cost
-        * the anchor's keyboard focus and middle-click-to-new-tab, both of which the row relies
-        * on. The button suppresses the anchor instead: it stops the pointer and the click, so a
-        * buy never navigates (see ui/QuickBuy.tsx).
-        */}
-      {show.quickBuy && canQuickBuy(token) && (
-        <span className="qbuy-slot">
-          <QuickBuy
-            token={token}
-            size={display.quickBuySize}
-            amountUsd={amountForList(display, list)}
-          />
-        </span>
-      )}
     </a>
   )
 })

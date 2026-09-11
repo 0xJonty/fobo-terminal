@@ -42,9 +42,8 @@ market cap, volume, liquidity, age, price change, trade pressure, and holder-con
 metrics (holder count, top-10 %, dev holdings), with a bonding-curve progress bar on the
 Bonding column.
 
-Clicking a card opens that token on fomo. The one other thing a card can do is buy — see
-[Quick buy](#quick-buy) — and which of those metrics it draws at all is yours to set in
-[Display settings](#display-settings).
+Clicking a card opens that token on fomo, and which of those metrics it draws at all is yours to
+set in [Display settings](#display-settings).
 
 ## The FOMO Panel
 
@@ -95,46 +94,15 @@ shown as MC, otherwise price — fomo's own display rule), and on the right the 
 (`status.fomo.family`), Privacy/Terms/Help, and the X/Discord icons. Prices refresh every minute
 and status every five, matching fomo's intervals.
 
-## Quick buy
-
-A buy button on the card itself, for a fixed amount you set once — the Axiom/GMGN gesture,
-against fomo's own trade rail rather than a wallet of fobo's.
-
-Every step is fomo's. Clicking sends its own swap call (`POST /swaps/v2`, the single call site
-its trade panel uses), and its server builds the transaction, prices it, applies its own fee
-tier and simulates it before returning anything. What comes back is already signed by fomo as
-fee payer; the one missing piece is the account holder's signature, and the wallet that provides
-it is the Privy embedded wallet fomo has already loaded into the page. fobo holds no key, sets
-no price and takes no cut.
-
-- **Funded from cash** — the same Solana USDC row the top bar calls cash. fomo's own floor is
-  $2 per swap; a swap it will not build is reported back verbatim on the button.
-- **Every chain fomo lists.** Because cash is Solana USDC, the transaction you sign is always a
-  Solana one; a token on BNB, Base, Monad, Ethereum or Robinhood Chain is delivered by Relay
-  from that same deposit. One signature either way.
-- **A per-column amount** sits beside each column's filter button: small on Bonding, larger on
-  Trending, without opening anything. A column you leave alone follows the default in Display
-  settings, and so do watchlist cards.
-- **One click.** No arming step, no dialog — that is the point of it. What it does instead is
-  refuse to spend what you do not have: the cash balance is checked before anything is sent, so
-  an empty wallet says so rather than failing somewhere on chain.
-- **It waits for the chain before saying "filled."** Submitted is "Sent"; the button then polls
-  the deposit's signature status and, for a cross-chain buy, Relay's own request status. Only
-  both together turn it green, and the transaction id is on the tooltip throughout. Anything
-  that goes wrong is announced as a notification over the middle of the terminal, not squeezed
-  onto the button.
-
 ## Display settings
 
 **Display settings** in the toolbar popup opens a dialog over the terminal. The four columns —
 Bonding, Graduated, Trending and the side panel — each have a switch; the ones you keep share
 the width equally, so a single column fills the terminal and two split it in half. At least one
 stays on. Every data point a card can draw — chain icon, name, market cap, age, holders, top-10
-share, dev holdings, volume, liquidity, 24h change, trade count, pressure bar, bonding bar, and
-the quick buy button — is a switch too, and cards restyle as you flip them. Quick buy's button
-size (small / medium / large) and default amount live in the same dialog; per-column amounts
-live beside each column's own filter button. A field switched on still shows nothing when the
-row does not carry it: the switches choose what *may* be drawn, never invent a number.
+share, dev holdings, volume, liquidity, 24h change, trade count, pressure bar and bonding bar —
+is a switch too, and cards restyle as you flip them. A field switched on still shows nothing when
+the row does not carry it: the switches choose what *may* be drawn, never invent a number.
 
 ## Everything else that's in there
 
@@ -220,19 +188,13 @@ behind Cloudflare bot management that rejects non-browser clients; a service-wor
 ## Scope limits
 
 - **No keys, ever.** Cash, portfolio value and open positions are *displayed* from fomo's own
-  API (the same endpoints fomo's header and positions list read). fobo holds no private key and
-  never sees one: the only transaction it can produce is a quick buy, which fomo's own server
-  builds, prices, fees and simulates, and which fomo's own wallet — already loaded in the page —
-  signs. Deposit, withdraw and account actions still hand off to fomo's UI.
-- **Quick buy** is off the same USDC cash rail fomo's trade panel spends, for an amount you set
-  per column, on one click. See [Quick buy](#quick-buy).
+  API (the same endpoints fomo's header and positions list read). fobo holds no private key,
+  never sees one, and produces no transactions of its own — it is read-only. Deposit, withdraw,
+  buying and account actions all hand off to fomo's own UI.
 - Profile pages and coin pages are left exactly as fomo ships them.
 - The terminal is rendered into a **closed** shadow root on a sibling element and opens its own
   API connection, so it never patches `fetch`, `WebSocket`, or React's DOM — and fomo's scripts
-  cannot reach into the terminal's DOM either. Disabling the extension leaves the site
-  untouched. The single exception is quick buy: for the duration of one click it runs one
-  self-contained function in fomo's own JavaScript world to ask that wallet for a signature, and
-  nothing of fobo's stays behind when it returns.
+  cannot reach into the terminal's DOM either. Disabling the extension leaves the site untouched.
 - The Privy JWT is read from the page's own `localStorage` at connect time, sent only to fomo's
   own API, and is never persisted by the extension or logged.
 - **Third parties.** Besides fomo's API, the extension talks to these hosts from your browser:
@@ -240,10 +202,7 @@ behind Cloudflare bot management that rejects non-browser clients; a service-wor
   chain on screen while the terminal is visible) and `status.fomo.family` (fomo's status page).
   Mobula therefore sees your IP address and that you are on fomo; nothing else is sent to it.
   If either host is blocked or fomo's CSP changes, the cards simply omit those metrics and a
-  single warning is logged. **Quick buy adds two more, and only when you press it**: the Jito
-  endpoint fomo's own quote nominates (`mainnet.block-engine.jito.wtf` or
-  `mainnet.hudson.jito.wtf`) to submit the signed transaction, and `api.relay.link` to ask
-  whether a cross-chain buy was filled. Both are the endpoints fomo's own client uses.
+  single warning is logged.
 - **Permissions.** `storage`, plus one host permission for `https://fomo.family/*`. No `tabs`,
   no `webRequest`, no `<all_urls>`.
 - **The address bar** shows `fomo.family/fobo-terminal` while the terminal is visible (a display

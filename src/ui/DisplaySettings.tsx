@@ -1,22 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import {
   CARD_FIELDS,
   CARD_FIELD_HINT,
   CARD_FIELD_LABEL,
   DISPLAY_DEFAULT,
-  QUICK_BUY_MAX_USD,
-  QUICK_BUY_SIZES,
-  QUICK_BUY_SIZE_LABEL,
   type CardField,
   type DisplaySettings as DisplaySettingsValue,
 } from '~/lib/displayPrefs'
 import { HIDDEN_EVENT } from '~/lib/host'
 import { LIST_KEYS, LIST_LABEL, type ListKey } from '~/lib/protocol'
-import { SWAP_MIN_USD } from '~/lib/swap'
 
 /**
- * The Display settings dialog: which data points a token card draws, and how quick buy behaves.
+ * The Display settings dialog: which columns the terminal draws, and which data points a token
+ * card shows.
  *
  * Opened from the toolbar popup (the popup only asks — see lib/displayPrefs.ts) and rendered
  * here, inside the terminal, because that is where the cards it describes live: every toggle
@@ -25,10 +22,6 @@ import { SWAP_MIN_USD } from '~/lib/swap'
  * Like ColumnControls, this never edits its own copy of the state — every interaction calls
  * onChange with the next settings and App owns persistence.
  */
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
-}
 
 export function DisplaySettings({
   settings,
@@ -44,9 +37,6 @@ export function DisplaySettings({
   onPanelChange: (on: boolean) => void
   onClose: () => void
 }) {
-  // The amount is a raw string while it is being typed, so "1", "1." and an emptied box all
-  // round-trip; it commits to the settings on every valid keystroke and is normalised on blur.
-  const [amountText, setAmountText] = useState(() => String(settings.quickBuyAmountUsd))
   const panelRef = useRef<HTMLDivElement>(null)
 
   // Opening the dialog should let Esc close it (and only it) straight away.
@@ -76,18 +66,6 @@ export function DisplaySettings({
     if (!on && panelEnabled && shownCount === 1) return
     onPanelChange(on)
   }
-
-  const commitAmount = (raw: string) => {
-    setAmountText(raw)
-    const parsed = Number(raw)
-    if (raw.trim() === '' || !Number.isFinite(parsed)) return
-    onChange({
-      ...settings,
-      quickBuyAmountUsd: Math.round(clamp(parsed, SWAP_MIN_USD, QUICK_BUY_MAX_USD) * 100) / 100,
-    })
-  }
-
-  const amountBad = amountText.trim() !== '' && !Number.isFinite(Number(amountText))
 
   return (
     <div
@@ -178,49 +156,6 @@ export function DisplaySettings({
                   </span>
                 </label>
               ))}
-            </div>
-          </section>
-
-          <section className="dset-section">
-            <div className="dset-section-label">Quick buy</div>
-            <p className="dset-hint">
-              One click buys — no confirmation step. Spends the same USDC cash the site&apos;s own
-              trade panel spends; its server builds, prices and fees every swap, and the button
-              waits for the chain (and Relay, for a token on another chain) before it says filled.
-            </p>
-
-            <div className="dset-row">
-              <span className="dset-row-label">Button size</span>
-              <div className="dset-segment" role="group" aria-label="Quick buy button size">
-                {QUICK_BUY_SIZES.map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    aria-pressed={settings.quickBuySize === size}
-                    onClick={() => onChange({ ...settings, quickBuySize: size })}
-                  >
-                    {QUICK_BUY_SIZE_LABEL[size]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="dset-row">
-              <span className="dset-row-label">
-                Default amount
-                <span className="dset-row-hint">
-                  USD, minimum ${SWAP_MIN_USD} — each column can override it beside its filter
-                </span>
-              </span>
-              <input
-                className="dset-input"
-                type="text"
-                inputMode="decimal"
-                value={amountText}
-                data-bad={amountBad ? 'true' : undefined}
-                onChange={(event) => commitAmount(event.target.value)}
-                onBlur={() => setAmountText(String(settings.quickBuyAmountUsd))}
-              />
             </div>
           </section>
         </div>

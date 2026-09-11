@@ -1,20 +1,18 @@
 /**
- * What a token card shows, and how quick buy behaves on it.
+ * What a token card shows, and which columns the terminal draws.
  *
  * Stored in chrome.storage.sync beside the other preferences (see settings.ts), so a card
- * trimmed down to the four numbers someone actually reads follows their Chrome profile. Unlike
- * the panel settings, BOTH writers are in the page: the Display settings dialog is rendered
- * inside the terminal, opened from the toolbar popup. The popup only asks for it — it never
- * writes these.
+ * trimmed down to the numbers someone actually reads follows their Chrome profile. Unlike the
+ * panel settings, BOTH writers are in the page: the Display settings dialog is rendered inside
+ * the terminal, opened from the toolbar popup. The popup only asks for it — it never writes these.
  *
- * Every field defaults to ON. An upgrade must not silently strip a card of the metrics it had
- * yesterday, so a stored payload written before a field existed reads as "shown".
+ * Every field and column defaults to ON. An upgrade must not silently strip a card of the metrics
+ * it had yesterday, so a stored payload written before one existed reads as "shown".
  */
 
 import { useSyncExternalStore } from 'react'
 import { debounce, withTimeout } from '~/lib/async'
 import { LIST_KEYS, type ListKey } from '~/lib/protocol'
-import { SWAP_MIN_USD } from '~/lib/swap'
 
 export const DISPLAY_KEY = 'fobo:display'
 
@@ -39,7 +37,6 @@ export const CARD_FIELDS = [
   'trades',
   'pressure',
   'bondBar',
-  'quickBuy',
 ] as const
 
 export type CardField = (typeof CARD_FIELDS)[number]
@@ -58,26 +55,11 @@ export const CARD_FIELD_LABEL: Readonly<Record<CardField, string>> = {
   trades: 'Trade count',
   pressure: 'Buy/sell pressure',
   bondBar: 'Bonding progress',
-  quickBuy: 'Quick buy button',
 }
 
 export const CARD_FIELD_HINT: Readonly<Partial<Record<CardField, string>>> = {
   bondBar: 'Bonding column only',
-  quickBuy: 'Amount per column, beside its filter',
 }
-
-export type QuickBuySize = 'small' | 'medium' | 'large'
-
-export const QUICK_BUY_SIZES: readonly QuickBuySize[] = ['small', 'medium', 'large']
-
-export const QUICK_BUY_SIZE_LABEL: Readonly<Record<QuickBuySize, string>> = {
-  small: 'Small',
-  medium: 'Medium',
-  large: 'Large',
-}
-
-/** Above fomo's own $2 floor, and low enough that a mis-click is not a disaster. */
-export const QUICK_BUY_MAX_USD = 10_000
 
 export interface DisplaySettings {
   fields: Record<CardField, boolean>
@@ -89,18 +71,6 @@ export interface DisplaySettings {
    * dialog and, as a last resort, by App's render.
    */
   columns: Record<ListKey, boolean>
-  quickBuySize: QuickBuySize
-  /**
-   * The default USD of cash spent per click, used by any column without its own amount and by
-   * the watchlist's cards. Never below fomo's own minimum swap value.
-   */
-  quickBuyAmountUsd: number
-  /**
-   * Per-column overrides, set from the box beside each column's filter button. Sizing differs
-   * by column in practice — small on Bonding, larger on Trending — which is the whole reason
-   * the box is per column rather than one figure in this dialog.
-   */
-  quickBuyAmountByList: Partial<Record<ListKey, number>>
 }
 
 function allFields(value: boolean): Record<CardField, boolean> {
@@ -114,9 +84,6 @@ function allColumns(value: boolean): Record<ListKey, boolean> {
 export const DISPLAY_DEFAULT: DisplaySettings = {
   fields: allFields(true),
   columns: allColumns(true),
-  quickBuySize: 'medium',
-  quickBuyAmountUsd: 10,
-  quickBuyAmountByList: {},
 }
 
 /** The token columns App should render, in LIST_KEYS order. Never used to force a minimum. */
@@ -124,24 +91,7 @@ export function enabledColumns(settings: DisplaySettings): ListKey[] {
   return LIST_KEYS.filter((list) => settings.columns[list])
 }
 
-/** Clamp one amount the way both the dialog and the per-column boxes must. */
-export function clampAmount(value: number): number {
-  // Two decimals: the amount is dollars of USDC, and a stored 10.005 must not round-trip into
-  // a base-unit amount the server reads differently from the label on the button.
-  return Math.round(clamp(value, SWAP_MIN_USD, QUICK_BUY_MAX_USD) * 100) / 100
-}
-
-/** What a card in `list` actually spends: that column's override, else the default. */
-export function amountForList(settings: DisplaySettings, list?: ListKey): number {
-  if (list === undefined) return settings.quickBuyAmountUsd
-  return settings.quickBuyAmountByList[list] ?? settings.quickBuyAmountUsd
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
-}
-
-/** Clamp and default whatever is in storage, so a bad write can never break a card. */
+/** Default whatever is in storage, so a bad write can never break a card. */
 export function sanitizeDisplaySettings(raw: unknown): DisplaySettings {
   const row = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
   const storedFields = (
@@ -159,33 +109,7 @@ export function sanitizeDisplaySettings(raw: unknown): DisplaySettings {
   // and a corrupt map can never blank every column — only an explicit `false` turns one off.
   for (const list of LIST_KEYS) columns[list] = storedColumns[list] !== false
 
-  const amount =
-    typeof row.quickBuyAmountUsd === 'number' && Number.isFinite(row.quickBuyAmountUsd)
-      ? row.quickBuyAmountUsd
-      : DISPLAY_DEFAULT.quickBuyAmountUsd
-
-  const storedByList = (
-    typeof row.quickBuyAmountByList === 'object' && row.quickBuyAmountByList !== null
-      ? row.quickBuyAmountByList
-      : {}
-  ) as Record<string, unknown>
-  const quickBuyAmountByList: Partial<Record<ListKey, number>> = {}
-  for (const list of LIST_KEYS) {
-    const value = storedByList[list]
-    // An override is only kept when it is a real number; anything else falls back to the
-    // default rather than pinning a column to a nonsense amount.
-    if (typeof value === 'number' && Number.isFinite(value)) quickBuyAmountByList[list] = clampAmount(value)
-  }
-
-  return {
-    fields,
-    columns,
-    quickBuySize: QUICK_BUY_SIZES.includes(row.quickBuySize as QuickBuySize)
-      ? (row.quickBuySize as QuickBuySize)
-      : DISPLAY_DEFAULT.quickBuySize,
-    quickBuyAmountUsd: clampAmount(amount),
-    quickBuyAmountByList,
-  }
+  return { fields, columns }
 }
 
 /** Defaults when the extension context is gone (orphaned content script) or storage throws. */
@@ -209,8 +133,8 @@ function writeDisplaySettings(settings: DisplaySettings): void {
 }
 
 /**
- * Debounced, like the column prefs: the amount box calls this per keystroke, and
- * chrome.storage.sync caps writes at 120/minute. The last value wins.
+ * Debounced, like the column prefs: the dialog calls this on every flip, and chrome.storage.sync
+ * caps writes at 120/minute. The last value wins.
  */
 export const saveDisplaySettings: (settings: DisplaySettings) => void = debounce(writeDisplaySettings, 400)
 
