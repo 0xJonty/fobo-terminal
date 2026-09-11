@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { usd, percent } from '~/lib/format'
 import { profilePath, tokenPath } from '~/lib/url'
 import { useActiveInterval } from '~/lib/visibility'
+import { ChainIcon } from '~/ui/ChainIcon'
 import type { AlertItem, MultiAlert, SwapAlert, ThesisAlert, MilestoneAlert } from '~/lib/alerts'
 
 /**
@@ -102,11 +103,14 @@ export function TokenLine({
   item,
   children,
 }: {
-  item: { tokenImageUrl?: string; ticker?: string; marketCap?: number }
+  item: { networkId?: number; tokenImageUrl?: string; ticker?: string; marketCap?: number }
   children?: React.ReactNode
 }) {
   return (
     <span className="alert-token">
+      {item.networkId !== undefined && (
+        <ChainIcon networkId={item.networkId} size={12} className="symbol-chain" />
+      )}
       {item.tokenImageUrl && (
         <img
           className="alert-token-logo"
